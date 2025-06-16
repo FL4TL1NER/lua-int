@@ -1,0 +1,1111 @@
+/*def parse(input: Seq[Token]): Option[NodeChunk] = {
+        // Helper functions
+
+        // Skip whitespace
+        @tailrec
+        def excludeEmptyTokens(input: Seq[Token]): Seq[Token] = {
+            if input.head.t == TokenType.empty then excludeEmptyTokens(input.drop(1)) else input
+        }
+
+        // peek next tokens
+        @tailrec
+        def peekNthToken(input: Seq[Token],n: Int): Token = {
+            if n>=1 then excludeEmptyTokens(input).head else peekNthToken(excludeEmptyTokens(input).drop(1),n-1)
+        }
+
+        def parseChunk(input: Seq[Token]): Option[(NodeChunk, Seq[Token])] = {
+            parseBlock(input).map((block, tokens) => (NodeChunk(block), tokens))
+        }
+
+        def takeTokenByPred(pred: Token => Boolean, input: Seq[Token]): Option[Seq[Token]] = {
+            if pred(excludeEmptyTokens(input).head) then Some(excludeEmptyTokens(input).drop(1)) else None
+        }
+
+        def parseBlock(input: Seq[Token]): Option[(NodeBlock, Seq[Token])] = {
+            // @tailrec
+            def parseStatList(input: Seq[Token]): (Seq[NodeStat],Seq[Token]) = {
+                parseStat(input) match
+                    case None => (Seq.empty[NodeStat],input)
+                    case Some((stat, tokens)) =>
+                        val (stats, tokensLeft) = parseStatList(tokens)
+                        (Seq(stat)++stats, tokensLeft)
+            }
+
+            val (statList, tokensLeft) = parseStatList(input)
+            parseRetstat(tokensLeft) match
+                case None => Some(NodeBlock(statList, None), tokensLeft)
+                case Some(retstat, tokensLeft) => Some(NodeBlock(statList, Some(retstat)), tokensLeft)
+        }
+
+        def parseStat(input: Seq[Token]): Option[(NodeStat, Seq[Token])] = {
+            val nextToken = peekNthToken(input,1)
+            nextToken.t match
+                case TokenType.denoter => nextToken.s match
+                    case ":" => parseLabel(input)
+                    case _ => None
+                case TokenType.reservedWord => nextToken.s match
+                    case "break" => parseBreak(input)
+                    case "goto" => parseGoto(input)
+                    case "do" => parseDoEnd(input)
+                    case "while" => parseWhile(input)
+                    case "repeat" => parseRepeat(input)
+                    case "if" => parseIf(input)
+                    case "for" => 
+                        val thirdToken = peekNthToken(input,3)
+                        thirdToken.s match
+                            case "=" => parseForInt(input)
+                            case _ => parseForExpr(input)
+
+                    case "function" => parseFunction(input)
+                    case "local" =>
+                        val secondToken = peekNthToken(input,2)
+                        secondToken.s match
+                            case "function" => parseLocalFunction(input)
+                            case _ => parseLocalNamelist(input)
+                    case _ => None
+
+                case TokenType.name =>
+                    parseFunctioncall(input) match
+                        case None => parseVarlistAssignment(input)
+                        case Some(functioncall, tokens) => Some(functioncall, tokens)
+
+                case _ => None
+
+        }
+
+        def parseRetstat(input: Seq[Token]): Option[(NodeRetstat, Seq[Token])] = {
+            def excludeSemicolon(tokens: Seq[Token]): Seq[Token] = {
+                val tokensLeft = excludeEmptyTokens(tokens)
+                if tokensLeft.head.s == ";" then tokensLeft.drop(1) else tokensLeft
+            }
+
+            (peekNthToken(input,1).s match {case "return" => Some(excludeEmptyTokens(input).drop(1)); case _ => None})
+            .map((tokens) => parseExplist(tokens) match {case None => (None, tokens); case Some(a, b) => (Some(a), b)})
+            .map((explist, tokens) => (NodeRetstat(explist),excludeSemicolon(tokens)))
+        }
+
+        def parseStatEmpty(input: Seq[Token]): Option[(NodeStatEmpty, Seq[Token])] = {
+            (peekNthToken(input,1).s match {case ";" => Some((NodeStatEmpty(),excludeEmptyTokens(input))); case _ => None})
+        }
+
+        def parseVarlistAssignment(input: Seq[Token]): Option[(NodeVarlistAssignment, Seq[Token])] = {
+            (Some(excludeEmptyTokens(input)))
+            .flatMap((tokens) => parseVarlist(tokens))
+            .flatMap((varlist, tokens) => peekNthToken(tokens,1).s match {case "=" => Some((varlist,excludeEmptyTokens(tokens).drop(1))); case _ => None})
+            .flatMap((varlist, tokens) => parseExplist(tokens).map((explist, tokens) => (varlist,explist,tokens)))
+            .map((varlist,explist,tokens) => (NodeVarlistAssignment(varlist,explist),tokens))
+        }
+
+        def parseLabel(input: Seq[Token]): Option[(NodeLabel, Seq[Token])] = {
+            (excludeEmptyTokens(input).take(2).map(_.s) match {
+                case Seq(":",":") => Some(excludeEmptyTokens(input).drop(2))
+                case _ => None})
+            .flatMap((tokens) => {
+                peekNthToken(tokens,1).t match {
+                    case TokenType.name => Some(EndNodeName(peekNthToken(tokens,1).s),excludeEmptyTokens(tokens).drop(1))
+                    case _ => None}})
+            .flatMap((name, tokens) => excludeEmptyTokens(tokens).take(2).map(_.s) match {
+                case Seq(":",":") => Some((NodeLabel(name),excludeEmptyTokens(tokens).drop(2)))
+                case _ => None})
+        }
+
+        def parseBreak(input: Seq[Token]): Option[(NodeBreak, Seq[Token])] = {
+            (peekNthToken(input,1).s match {case "break" => Some(NodeBreak(), excludeEmptyTokens(input).drop(1)); case _ => None})
+        }
+
+        def parseGoto(input: Seq[Token]): Option[(NodeGoto, Seq[Token])] = {
+            (peekNthToken(input,1).s match {
+                case "goto" => Some(excludeEmptyTokens(input).drop(1))
+                case _ => None})
+            .flatMap((tokens) => peekNthToken(tokens,1).t match {
+                case TokenType.name => Some(NodeGoto(EndNodeName(peekNthToken(tokens,1).s)), excludeEmptyTokens(tokens).drop(1))
+                case _ => None})
+        }
+
+        def parseDoEnd(input: Seq[Token]): Option[(NodeDoEnd, Seq[Token])] = {
+            (peekNthToken(input,1).s match {
+                case "do" => Some(excludeEmptyTokens(input).drop(1))
+                case _ => None})
+            .flatMap((tokens) => parseBlock(tokens))
+            .flatMap((block, tokens) => peekNthToken(input, 1).s match {
+                case "end" => Some(NodeDoEnd(block),excludeEmptyTokens(input).drop(1))
+                case _ => None})
+        }
+
+        def parseWhile(input: Seq[Token]): Option[(NodeWhile, Seq[Token])] = {
+            (peekNthToken(input,1).s match {
+                case "while" => Some(excludeEmptyTokens(input).drop(1))
+                case _ => None})
+            .flatMap((tokens) => parseExp(tokens))
+            .flatMap((exp, tokens) => peekNthToken(tokens,1).s match {
+                case "do" => Some(exp, excludeEmptyTokens(tokens).drop(1))
+                case _ => None})
+            .flatMap((exp, tokens) => parseBlock(tokens).map((block, tokensLeft) => (exp, block, tokensLeft)))
+            .flatMap((exp, block, tokens) => peekNthToken(tokens,1).s match{
+                case "end" => Some(exp, block, excludeEmptyTokens(tokens).drop(1))
+                case _ => None})
+            .map((exp, block, tokens) => (NodeWhile(exp, block), tokens))
+        }
+
+        def parseRepeat(input: Seq[Token]): Option[(NodeRepeat, Seq[Token])] = {
+            (peekNthToken(input,1).s match {
+                case "repeat" => Some(excludeEmptyTokens(input).drop(1))
+                case _ => None})
+            .flatMap((tokens) => parseBlock(tokens))
+            .flatMap((block, tokens) => peekNthToken(tokens,1).s match {
+                case "until" => Some(block, excludeEmptyTokens(tokens).drop(1))
+                case _ => None})
+            .flatMap((block, tokens) => parseExp(tokens).map((exp, tokensLeft) => (exp, block, tokensLeft)))
+            .map((exp, block, tokens) => (NodeRepeat(block, exp), tokens))
+        }
+
+        def parseIf(input: Seq[Token]): Option[(NodeIf, Seq[Token])] = {
+            // @tailrec
+            def parseElseIf(input: Seq[Token]): Option[(NodeIf,Seq[Token])] = {
+                (peekNthToken(input,1).s match {
+                    case "elseif" => Some(excludeEmptyTokens(input).drop(1))
+                    case _ => None})
+                .flatMap((tokens) => parseExp(tokens))
+                .flatMap((exp, tokens) => peekNthToken(tokens,1).s match {
+                    case "then" => Some(exp, excludeEmptyTokens(tokens).drop(1))
+                    case _ => None})
+                .flatMap((exp, tokens) => parseBlock(tokens).map((block, tokensLeft) => (exp, block, tokensLeft)))
+                .flatMap((exp, block, tokens) => peekNthToken(tokens,1).s match {
+                    case "elseif" =>
+                        parseElseIf(tokens) match
+                            case None => None
+                            case Some((nodeif,tokens)) => Some((NodeIf(exp, block, Some(NodeBlock(Seq(nodeif),None))), tokens))
+                    case "else" =>
+                        parseBlock(excludeEmptyTokens(tokens).drop(1)) match
+                            case None => None
+                            case Some((blockElse, tokens)) => Some((NodeIf(exp,block,Some(blockElse)),tokens))
+                    case _ => Some((NodeIf(exp, block, None), tokens))})
+            }
+
+            (peekNthToken(input,1).s match {
+                case "if" => Some(excludeEmptyTokens(input).drop(1))
+                case _ => None})
+            .flatMap((tokens) => parseExp(tokens))
+            .flatMap((exp, tokens) => peekNthToken(tokens,1).s match {
+                case "then" => Some(exp, excludeEmptyTokens(tokens).drop(1))
+                case _ => None})
+            .flatMap((exp, tokens) => parseBlock(tokens).map((block, tokensLeft) => (exp, block, tokensLeft)))
+            .flatMap((exp, block, tokens) => peekNthToken(tokens,1).s match {
+                case "elseif" =>
+                    parseElseIf(tokens) match
+                        case None => None
+                        case Some((nodeif,tokens)) => Some((NodeIf(exp, block, Some(NodeBlock(Seq(nodeif),None))), tokens))
+                case "else" =>
+                    parseBlock(excludeEmptyTokens(tokens).drop(1)) match
+                        case None => None
+                        case Some((blockElse, tokens)) => Some((NodeIf(exp,block,Some(blockElse)),tokens))
+                case _ => Some((NodeIf(exp, block, None), tokens))})
+            .flatMap((nodeIf, tokens) => peekNthToken(tokens,1).s match {
+                case "end" => Some(nodeIf, excludeEmptyTokens(tokens).drop(1))
+                case _ => None})
+        }
+
+        def parseForInt(input: Seq[Token]): Option[(NodeForInt, Seq[Token])] = {
+            (peekNthToken(input, 1).s match {
+                case "for" => Some(excludeEmptyTokens(input).drop(1))
+                case _ => None})
+            .flatMap((tokens) => {
+                peekNthToken(tokens,1 ).t match {
+                    case TokenType.name => Some(EndNodeName(peekNthToken(tokens,1).s),excludeEmptyTokens(tokens).drop(1))
+                    case _ => None}})
+            .flatMap((name, tokens) => {
+                peekNthToken(tokens,1).s match
+                    case "=" => Some(name, excludeEmptyTokens(tokens).drop(1))
+                    case _ => None})
+            .flatMap((name, tokens) => parseExp(tokens).map((exp1, tokens) => (name, exp1, tokens)))
+            .flatMap((name, exp1, tokens) => {
+                peekNthToken(tokens,1).s match
+                    case "," => Some(name, exp1,excludeEmptyTokens(tokens).drop(1))
+                    case _ => None})
+            .flatMap((name, exp1, tokens) => parseExp(tokens).map((exp2, tokens) => (name, exp1, exp2, tokens)))
+            .flatMap((name, exp1, exp2, tokens) => 
+                peekNthToken(tokens,1).s match
+                    case "," => 
+                        parseExp(excludeEmptyTokens(tokens).drop(1)) match
+                            case None => None
+                            case Some(exp3, tokens) => Some((name, exp1, exp2, exp3, tokens))
+                    case _ => Some(name, exp1, exp2, EndNodeNumeral(1L), tokens))
+            .flatMap((name, exp1, exp2, exp3, tokens) =>
+                peekNthToken(tokens,1).s match
+                    case "do" => Some(name, exp1, exp2, exp3, excludeEmptyTokens(tokens).drop(1))
+                    case _ => None)
+            .flatMap((name, exp1, exp2, exp3, tokens) => parseBlock(tokens).map((block, tokensLeft) => (name, exp1, exp2, exp3, block, tokens)))
+            .flatMap((name, exp1, exp2, exp3, block, tokens) => 
+                peekNthToken(tokens,1).s match
+                    case "end" => Some((NodeForInt(name, exp1, exp2, exp3, block), excludeEmptyTokens(tokens).drop(1)))
+                    case _ => None)
+
+        }
+
+        def parseForExpr(input: Seq[Token]): Option[(NodeForExpr, Seq[Token])] = {
+            (takeTokenByPred((t) => t.s == "for", input))
+            .flatMap(parseNamelist)
+            .flatMap((namelist, tokens) => 
+                takeTokenByPred((t) => t.s == "in", tokens)
+                .map((tokens) => (namelist, tokens)))
+            .flatMap((namelist, tokens) => 
+                parseExplist(tokens)
+                .map((explist, tokens) => (namelist, explist, tokens)))
+            .flatMap((namelist, explist, tokens) => 
+                takeTokenByPred((t) => t.s == "do", tokens)
+                .map((tokens) => (namelist, explist, tokens)))
+            .flatMap((namelist, explist, tokens) => 
+                parseBlock(tokens)
+                .map((block, tokens) => (namelist, explist, block, tokens)))
+            .flatMap((namelist, explist, block, tokens) => 
+                takeTokenByPred((t) => t.s == "end", tokens)
+                .map((tokens) => (namelist, explist, block, tokens)))
+            .map((namelist, explist, block, tokens) => (NodeForExpr(namelist, explist, block), tokens))
+        }
+
+        def parseFunction(input: Seq[Token]): Option[(NodeFunction, Seq[Token])] = {
+            (takeTokenByPred((t) => t.s == "function", input))
+            .flatMap(parseFuncname)
+            .flatMap((funcname, tokens) =>
+                parseFuncbody(tokens)
+                .map((funcbody, tokens) => (funcname, funcbody, tokens)))
+            .map((funcname, funcbody, tokens) => (NodeFunction(funcname, funcbody), tokens))
+        }
+
+        def parseLocalFunction(input: Seq[Token]): Option[(NodeLocalFunction, Seq[Token])] = {
+            (takeTokenByPred((t) => t.s == "local", input))
+            .flatMap((tokens) => 
+                takeTokenByPred((t) => t.s == "function", tokens))
+            .flatMap((tokens) => peekNthToken(tokens,1 ).t match
+                    case TokenType.name => Some(EndNodeName(peekNthToken(tokens,1).s),excludeEmptyTokens(tokens).drop(1))
+                    case _ => None)
+            .flatMap((name, tokens) =>
+                parseFuncbody(tokens)
+                .map((funcbody, tokens) => (name, funcbody, tokens)))
+            .map((name, funcbody, tokens) => (NodeLocalFunction(name, funcbody), tokens))
+        }
+
+        def parseLocalNamelist(input: Seq[Token]): Option[(NodeLocalNamelist, Seq[Token])] = {
+            (takeTokenByPred((t) => t.s == "local", input))
+            .flatMap(parseAttnamelist)
+            .flatMap((attnamelist, tokens) =>
+                takeTokenByPred((t) => t.s == "=", input) match
+                    case None => Some(attnamelist, None, tokens)
+                    case Some(tokens) => 
+                        parseExplist(tokens).map((explist, tokens) => (attnamelist, Some(explist), tokens)))
+            .map((attnamelist, optExplist, tokens) => (NodeLocalNamelist(attnamelist, optExplist), tokens))
+        }
+
+        def parseFunctioncall(input: Seq[Token]): Option[(NodeFunctioncall, Seq[Token])] = {
+            parseValue(input) match
+                case None => None
+                case Some(value, tokens) => value.tail.lastOption match
+                    case None => None
+                    case Some(value2) => value2 match
+                        case NodeFunctioncall_args(_,_) => Some(NodeFunctioncall(value), tokens)
+                        case NodeVar_index(_) => None     
+        }
+
+        def parseExplist(input: Seq[Token]): Option[(NodeExplist, Seq[Token])] = {
+            def parseCommaExp(input: Seq[Token]): Option[(NodeExp,Seq[Token])] = {
+                (takeTokenByPred((t) => t.s == ",", input))
+                .flatMap(parseExp)
+            }
+
+            // @tailrec
+            def parseExplistRec(input: Seq[Token]): (Seq[NodeExp], Seq[Token]) ={
+                (parseCommaExp(input)) match
+                    case Some(exp, tokens) =>
+                        val (explist, left) = parseExplistRec(tokens)
+                        (Seq(exp)++explist, left)
+                    case None => (Seq.empty[NodeExp], input)
+            }
+
+            (parseExp(input))
+            .map((exp, tokens) => 
+                val (explist, left) = parseExplistRec(tokens)
+                (Seq(exp)++explist, left))
+            .map((explist, tokens) => (NodeExplist(explist), tokens))
+        }
+
+        def parseVarlist(input: Seq[Token]): Option[(NodeVarlist, Seq[Token])] = {
+            def parseCommaVar(input: Seq[Token]): Option[(NodeVar,Seq[Token])] = {
+                (takeTokenByPred((t) => t.s == ",", input))
+                .flatMap(parseVar)
+            }
+
+            // @tailrec
+            def parseVarlistRec(input: Seq[Token]): (Seq[NodeVar], Seq[Token]) ={
+                (parseCommaVar(input)) match
+                    case Some(exp, tokens) =>
+                        val (explist, left) = parseVarlistRec(tokens)
+                        (Seq(exp)++explist, left)
+                    case None => (Seq.empty[NodeVar], input)
+            }
+
+            (parseVar(input))
+            .map((exp, tokens) => 
+                val (explist, left) = parseVarlistRec(tokens)
+                (Seq(exp)++explist, left))
+            .map((explist, tokens) => (NodeVarlist(explist), tokens))
+        }
+
+        def parseNamelist(input: Seq[Token]): Option[(NodeNamelist, Seq[Token])] = {
+            def parseCommaName(input: Seq[Token]): Option[(EndNodeName,Seq[Token])] = {
+                (takeTokenByPred((t) => t.s == ",", input))
+                .flatMap(parseName)
+            }
+
+            // @tailrec
+            def parseNamelistRec(input: Seq[Token]): (Seq[EndNodeName],Seq[Token]) ={
+                (parseCommaName(input)) match
+                    case Some(exp, tokens) =>
+                        val (explist, left) = parseNamelistRec(tokens)
+                        (Seq(exp)++explist, left)
+                    case None => (Seq.empty[EndNodeName], input)
+            }
+
+            (parseName(input))
+            .map((exp, tokens) => 
+                val (explist, left) = parseNamelistRec(tokens)
+                (Seq(exp)++explist, left))
+            .map((explist, tokens) => (NodeNamelist(explist), tokens))
+        }
+
+        def parseExp(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+            def parseExp2(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                def parseOrExp3(input: Seq[Token]): Option[(BinOp, NodeExp, Seq[Token])] = {
+                    (peekNthToken(input, 1).s match
+                        case "or" => Some((BinOp.Or, excludeEmptyTokens(input).drop(1)))
+                        case _ => None)
+                    .flatMap((binop, tokens) =>
+                        parseExp3(tokens)
+                        .map((exp, tokens) => (binop, exp, tokens)))
+                }
+
+                def parseOrExp3List(input: Seq[Token]): (Seq[(BinOp, NodeExp)], Seq[Token]) = {
+                    parseOrExp3(input) match
+                        case None => (Seq.empty[(BinOp, NodeExp)], input)
+                        case Some(binop, exp, tokens) =>
+                            val (binopExpList, left) = parseOrExp3List(tokens)
+                            (Seq((binop, exp))++binopExpList, left)
+                }
+
+                parseExp3(input)
+                .map((exp, tokens) =>
+                    val (explist, left) = parseOrExp3List(tokens)
+                    if explist.length > 0 then
+                        (explist.foldLeft(exp)((exp, binopExp) => (NodeBinOpExp(binopExp._1, exp, binopExp._2))), left)
+                    else
+                        (exp, left))
+            }
+
+            def parseExp3(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                def parseOrExp4(input: Seq[Token]): Option[(BinOp, NodeExp, Seq[Token])] = {
+                    (peekNthToken(input, 1).s match
+                        case "and" => Some((BinOp.And, excludeEmptyTokens(input).drop(1)))
+                        case _ => None)
+                    .flatMap((binop, tokens) =>
+                        parseExp4(tokens)
+                        .map((exp, tokens) => (binop, exp, tokens)))
+                }
+
+                def parseOrExp4List(input: Seq[Token]): (Seq[(BinOp, NodeExp)], Seq[Token]) = {
+                    parseOrExp4(input) match
+                        case None => (Seq.empty[(BinOp, NodeExp)], input)
+                        case Some(binop, exp, tokens) =>
+                            val (binopExpList, left) = parseOrExp4List(tokens)
+                            (Seq((binop, exp))++binopExpList, left)
+                }
+
+                parseExp4(input)
+                .map((exp, tokens) =>
+                    val (explist, left) = parseOrExp4List(tokens)
+                    if explist.length > 0 then
+                        (explist.foldLeft(exp)((exp, binopExp) => (NodeBinOpExp(binopExp._1, exp, binopExp._2))), left)
+                    else
+                        (exp, left))
+            }
+
+            def parseExp4(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                def parseOrExp5(input: Seq[Token]): Option[(BinOp, NodeExp, Seq[Token])] = {
+                    (peekNthToken(input, 1).s match
+                        case "<" => Some((BinOp.LessThan, excludeEmptyTokens(input).drop(1)))
+                        case ">" => Some((BinOp.GreaterThan, excludeEmptyTokens(input).drop(1)))
+                        case "<=" => Some((BinOp.LessOrEqual, excludeEmptyTokens(input).drop(1)))
+                        case ">=" => Some((BinOp.GreaterOrEqual, excludeEmptyTokens(input).drop(1)))
+                        case "~=" => Some((BinOp.Inequality, excludeEmptyTokens(input).drop(1)))
+                        case "==" => Some((BinOp.Equality, excludeEmptyTokens(input).drop(1)))
+                        case _ => None)
+                    .flatMap((binop, tokens) =>
+                        parseExp5(tokens)
+                        .map((exp, tokens) => (binop, exp, tokens)))
+                }
+
+                def parseOrExp5List(input: Seq[Token]): (Seq[(BinOp, NodeExp)], Seq[Token]) = {
+                    parseOrExp5(input) match
+                        case None => (Seq.empty[(BinOp, NodeExp)], input)
+                        case Some(binop, exp, tokens) =>
+                            val (binopExpList, left) = parseOrExp5List(tokens)
+                            (Seq((binop, exp))++binopExpList, left)
+                }
+
+                parseExp5(input)
+                .map((exp, tokens) =>
+                    val (explist, left) = parseOrExp5List(tokens)
+                    if explist.length > 0 then
+                        (explist.foldLeft(exp)((exp, binopExp) => (NodeBinOpExp(binopExp._1, exp, binopExp._2))), left)
+                    else
+                        (exp, left))
+            }
+
+            def parseExp5(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                def parseOrExp6(input: Seq[Token]): Option[(BinOp, NodeExp, Seq[Token])] = {
+                    (peekNthToken(input, 1).s match
+                        case "~" => Some((BinOp.BitwiseXOR, excludeEmptyTokens(input).drop(1)))
+                        case _ => None)
+                    .flatMap((binop, tokens) =>
+                        parseExp6(tokens)
+                        .map((exp, tokens) => (binop, exp, tokens)))
+                }
+
+                def parseOrExp6List(input: Seq[Token]): (Seq[(BinOp, NodeExp)], Seq[Token]) = {
+                    parseOrExp6(input) match
+                        case None => (Seq.empty[(BinOp, NodeExp)], input)
+                        case Some(binop, exp, tokens) =>
+                            val (binopExpList, left) = parseOrExp6List(tokens)
+                            (Seq((binop, exp))++binopExpList, left)
+                }
+
+                parseExp6(input)
+                .map((exp, tokens) =>
+                    val (explist, left) = parseOrExp6List(tokens)
+                    if explist.length > 0 then
+                        (explist.foldLeft(exp)((exp, binopExp) => (NodeBinOpExp(binopExp._1, exp, binopExp._2))), left)
+                    else
+                        (exp, left))
+            }
+
+            def parseExp6(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                def parseOrExp7(input: Seq[Token]): Option[(BinOp, NodeExp, Seq[Token])] = {
+                    (peekNthToken(input, 1).s match
+                        case "<<" => Some((BinOp.LeftShift, excludeEmptyTokens(input).drop(1)))
+                        case ">>" => Some((BinOp.RightShift, excludeEmptyTokens(input).drop(1)))
+                        case _ => None)
+                    .flatMap((binop, tokens) =>
+                        parseExp7(tokens)
+                        .map((exp, tokens) => (binop, exp, tokens)))
+                }
+
+                def parseOrExp7List(input: Seq[Token]): (Seq[(BinOp, NodeExp)], Seq[Token]) = {
+                    parseOrExp7(input) match
+                        case None => (Seq.empty[(BinOp, NodeExp)], input)
+                        case Some(binop, exp, tokens) =>
+                            val (binopExpList, left) = parseOrExp7List(tokens)
+                            (Seq((binop, exp))++binopExpList, left)
+                }
+
+                parseExp7(input)
+                .map((exp, tokens) =>
+                    val (explist, left) = parseOrExp7List(tokens)
+                    if explist.length > 0 then
+                        (explist.foldLeft(exp)((exp, binopExp) => (NodeBinOpExp(binopExp._1, exp, binopExp._2))), left)
+                    else
+                        (exp, left))
+            }
+
+            def parseExp7(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                def parseOrExp8(input: Seq[Token]): Option[(BinOp, NodeExp, Seq[Token])] = {
+                    (peekNthToken(input, 1).s match
+                        case ".." => Some((BinOp.Concatenation, excludeEmptyTokens(input).drop(1)))
+                        case _ => None)
+                    .flatMap((binop, tokens) =>
+                        parseExp8(tokens)
+                        .map((exp, tokens) => (binop, exp, tokens)))
+                }
+
+                def parseOrExp8List(input: Seq[Token]): (Seq[(BinOp, NodeExp)], Seq[Token]) = {
+                    parseOrExp8(input) match
+                        case None => (Seq.empty[(BinOp, NodeExp)], input)
+                        case Some(binop, exp, tokens) =>
+                            val (binopExpList, left) = parseOrExp8List(tokens)
+                            (Seq((binop, exp))++binopExpList, left)
+                }
+
+                parseExp8(input)
+                .map((exp, tokens) =>
+                    val (explist, left) = parseOrExp8List(tokens)
+                    if explist.length > 0 then
+                        (explist.foldLeft(exp)((exp, binopExp) => (NodeBinOpExp(binopExp._1, exp, binopExp._2))), left)
+                    else
+                        (exp, left))
+            }
+
+            def parseExp8(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                def parseOrExp9(input: Seq[Token]): Option[(BinOp, NodeExp, Seq[Token])] = {
+                    (peekNthToken(input, 1).s match
+                        case "+" => Some((BinOp.Addition, excludeEmptyTokens(input).drop(1)))
+                        case "-" => Some((BinOp.Substaction, excludeEmptyTokens(input).drop(1)))
+                        case _ => None)
+                    .flatMap((binop, tokens) =>
+                        parseExp9(tokens)
+                        .map((exp, tokens) => (binop, exp, tokens)))
+                }
+
+                def parseOrExp9List(input: Seq[Token]): (Seq[(BinOp, NodeExp)], Seq[Token]) = {
+                    parseOrExp9(input) match
+                        case None => (Seq.empty[(BinOp, NodeExp)], input)
+                        case Some(binop, exp, tokens) =>
+                            val (binopExpList, left) = parseOrExp9List(tokens)
+                            (Seq((binop, exp))++binopExpList, left)
+                }
+
+                parseExp9(input)
+                .map((exp, tokens) =>
+                    val (explist, left) = parseOrExp9List(tokens)
+                    if explist.length > 0 then
+                        (explist.foldLeft(exp)((exp, binopExp) => (NodeBinOpExp(binopExp._1, exp, binopExp._2))), left)
+                    else
+                        (exp, left))
+            }
+
+            def parseExp9(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                def parseOrExp10(input: Seq[Token]): Option[(BinOp, NodeExp, Seq[Token])] = {
+                    (peekNthToken(input, 1).s match
+                        case "+" => Some((BinOp.Addition, excludeEmptyTokens(input).drop(1)))
+                        case "-" => Some((BinOp.Substaction, excludeEmptyTokens(input).drop(1)))
+                        case _ => None)
+                    .flatMap((binop, tokens) =>
+                        parseExp10(tokens)
+                        .map((exp, tokens) => (binop, exp, tokens)))
+                }
+
+                def parseOrExp10List(input: Seq[Token]): (Seq[(BinOp, NodeExp)], Seq[Token]) = {
+                    parseOrExp10(input) match
+                        case None => (Seq.empty[(BinOp, NodeExp)], input)
+                        case Some(binop, exp, tokens) =>
+                            val (binopExpList, left) = parseOrExp10List(tokens)
+                            (Seq((binop, exp))++binopExpList, left)
+                }
+
+                parseExp10(input)
+                .map((exp, tokens) =>
+                    val (explist, left) = parseOrExp10List(tokens)
+                    if explist.length > 0 then
+                        (explist.foldLeft(exp)((exp, binopExp) => (NodeBinOpExp(binopExp._1, exp, binopExp._2))), left)
+                    else
+                        (exp, left))
+            }
+
+            def parseExp10(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                def parseOrExp11(input: Seq[Token]): Option[(BinOp, NodeExp, Seq[Token])] = {
+                    (peekNthToken(input, 1).s match
+                        case "*" => Some((BinOp.Multiplication, excludeEmptyTokens(input).drop(1)))
+                        case "/" => Some((BinOp.Division, excludeEmptyTokens(input).drop(1)))
+                        case "//" => Some((BinOp.FloorDivision, excludeEmptyTokens(input).drop(1)))
+                        case "%" => Some((BinOp.Modulo, excludeEmptyTokens(input).drop(1)))
+                        case _ => None)
+                    .flatMap((binop, tokens) =>
+                        parseExp11(tokens)
+                        .map((exp, tokens) => (binop, exp, tokens)))
+                }
+
+                def parseOrExp11List(input: Seq[Token]): (Seq[(BinOp, NodeExp)], Seq[Token]) = {
+                    parseOrExp11(input) match
+                        case None => (Seq.empty[(BinOp, NodeExp)], input)
+                        case Some(binop, exp, tokens) =>
+                            val (binopExpList, left) = parseOrExp11List(tokens)
+                            (Seq((binop, exp))++binopExpList, left)
+                }
+
+                parseExp11(input)
+                .map((exp, tokens) =>
+                    val (explist, left) = parseOrExp11List(tokens)
+                    if explist.length > 0 then
+                        (explist.foldLeft(exp)((exp, binopExp) => (NodeBinOpExp(binopExp._1, exp, binopExp._2))), left)
+                    else
+                        (exp, left))
+            }
+
+            def parseExp11(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                (peekNthToken(input,1).s match
+                    case "-" => Some((UnOp.Minus, excludeEmptyTokens(input).drop(1)))
+                    case "not" => Some((UnOp.NOT, excludeEmptyTokens(input).drop(1)))
+                    case "#" => Some((UnOp.Length, excludeEmptyTokens(input).drop(1)))
+                    case "~" => Some((UnOp.BitwiseNOT, excludeEmptyTokens(input).drop(1)))
+                    case _ => None) match
+                        case Some(unop, tokens) =>
+                            parseExp12(tokens)
+                            .map((exp, tokens) => (NodeUnOpExp(unop, exp), tokens))
+                        case None => parseExp12(input)        
+            }
+
+            def parseExp12(input: Seq[Token]): Option[(NodeExp, Seq[Token])] = {
+                def parseOrSimpleExp(input: Seq[Token]): Option[(BinOp, NodeExp, Seq[Token])] = {
+                    (peekNthToken(input, 1).s match
+                        case "^" => Some((BinOp.Multiplication, excludeEmptyTokens(input).drop(1)))
+                        case _ => None)
+                    .flatMap((binop, tokens) =>
+                        parseSimpleExp(tokens)
+                        .map((exp, tokens) => (binop, exp, tokens)))
+                }
+
+                def parseOrSimpleExpList(input: Seq[Token]): (Seq[(BinOp, NodeExp)], Seq[Token]) = {
+                    parseOrSimpleExp(input) match
+                        case None => (Seq.empty[(BinOp, NodeExp)], input)
+                        case Some(binop, exp, tokens) =>
+                            val (binopExpList, left) = parseOrSimpleExpList(tokens)
+                            (Seq((binop, exp))++binopExpList, left)
+                }
+
+                parseSimpleExp(input)
+                .map((exp, tokens) =>
+                    val (explist, left) = parseOrSimpleExpList(tokens)
+                    if explist.length > 0 then
+                        (explist.foldLeft(exp)((exp: NodeExp, binopExp) => (NodeBinOpExp(binopExp._1, exp, binopExp._2))), left)
+                    else
+                        (exp, left))
+            }
+
+            def parseSimpleExp(input: Seq[Token]): Option[(NodeSimpleexp, Seq[Token])] = {
+                def parseNil(input: Seq[Token]): Option[(NodeNil, Seq[Token])] = {
+                    peekNthToken(input,1).s match
+                        case "nil" => Some((NodeNil(), excludeEmptyTokens(input)))
+                        case _ => None 
+                }
+
+                def parseBoolean(input: Seq[Token]): Option[(NodeBoolean, Seq[Token])] = {
+                    peekNthToken(input,1).s match
+                        case "true" => Some((NodeBoolean(true), excludeEmptyTokens(input)))
+                        case "false" => Some((NodeBoolean(false), excludeEmptyTokens(input)))
+                        case _ => None
+                }
+
+                def parseNumber(input: Seq[Token]): Option[(EndNodeNumeral, Seq[Token])] = {
+                    (peekNthToken(input,1).t match
+                        case TokenType.number =>
+                            val token = peekNthToken(input,1).s.toLowerCase()
+                            Some(if token.contains(".") | token.contains("e") then token.toDouble else token.toLong)
+                        case _ => None)
+                        .map((number) => (EndNodeNumeral(number), excludeEmptyTokens(input).drop(1)))
+                }
+
+                def parseVararg(input: Seq[Token]): Option[(NodeVararg, Seq[Token])] = {
+                    (peekNthToken(input,1).s match
+                        case "..." => Some(NodeVararg(), excludeEmptyTokens(input).drop(1))
+                        case _ => None)
+
+                }
+
+                peekNthToken(input,1) match
+                    case Token("nil", _) => parseNil(input)
+                    case Token("true", _) => parseBoolean(input)
+                    case Token("false", _) => parseBoolean(input)
+                    case Token(_, TokenType.number) => parseNumber(input)
+                    case Token("[", _) => parseLiteralString(input)
+                    case Token("\"", _) => parseLiteralString(input)
+                    case Token("...", _) => parseVararg(input)
+                    case Token("function", _) => parseFunction(input)
+                    case Token("{", _) => parseTableconstructor(input)
+                    case Token("(", _) => parseValue(input)
+                    case Token(_, TokenType.name) => parseValue(input)
+                    case _ => None
+            }
+
+            parseExp(input)
+        }
+
+        def parseVar(input: Seq[Token]): Option[(NodeVar, Seq[Token])] = {
+            parseValue(input) match
+                case None => None
+                case Some(value, tokens) => value.tail.lastOption match
+                    case None => Some(NodeVar(value), tokens)
+                    case Some(value2) => value2 match
+                        case NodeFunctioncall_args(_,_) => None
+                        case NodeVar_index(_) => Some(NodeVar(value), tokens)  
+        }
+
+        def parseName(input: Seq[Token]): Option[(EndNodeName, Seq[Token])] = {
+            peekNthToken(input,1 ).t match 
+                case TokenType.name => Some(EndNodeName(peekNthToken(input,1).s),excludeEmptyTokens(input).drop(1))
+                case _ => None
+        }
+
+        def parseValue(input: Seq[Token]): Option[(NodeValue, Seq[Token])] = {
+            def parseVar_index(input: Seq[Token]): Option[(NodeVar_index, Seq[Token])] = {
+                def parseBracesExp(input: Seq[Token]): Option[(NodeVar_index,Seq[Token])] = {
+                    (takeTokenByPred((t) => t.s == "[", input))
+                    .flatMap(parseExp)
+                    .flatMap((exp, tokens) =>
+                        takeTokenByPred((t) => t.s == "]", tokens)
+                        .map((tokens) => (exp, tokens)))
+                    .map((exp, tokens) => (NodeVar_index(exp), tokens))
+                }
+
+                def parseDotName(input: Seq[Token]): Option[(NodeVar_index,Seq[Token])] = {
+                    (takeTokenByPred((t) => t.s == ".", input))
+                    .flatMap(parseName)
+                    .map((name, tokens) => (NodeVar_index(EndNodeLiteralString(name.name)), tokens))
+                }
+
+                (peekNthToken(input,1).s match
+                    case "." => parseDotName
+                    case "[" => parseBracesExp
+                    case _ => (a: Seq[Token]) => None)(input)
+            }
+
+            def parseFunctioncall_args(input: Seq[Token]): Option[(NodeFunctioncall_args, Seq[Token])] = {
+                def parseArgs(input: Seq[Token]): Option[(NodeArgs,Seq[Token])] = {
+                    def parseArgsBracets(input: Seq[Token]): Option[(NodeArgsBracets,Seq[Token])] = {
+                        (takeTokenByPred((t) => t.s == "(", input))
+                        .map((tokens) => parseExplist(tokens) match
+                            case None => (None, tokens)
+                            case Some(explist, tokens) => (Some(explist), tokens))
+                        .flatMap((explist, tokens) =>
+                            takeTokenByPred((t) => t.s == ")", tokens)
+                            .map((tokens) => (explist, tokens)))
+                        .map((explist, tokens) => (NodeArgsBracets(explist), tokens))
+                    }
+
+                    (peekNthToken(input,1).s match
+                        case "(" => parseArgsBracets
+                        case "{" => parseTableconstructor
+                        case "\"" => parseLiteralString
+                        case "[" => peekNthToken(input,2).s match
+                            case "=" => parseLiteralString
+                            case _ => (a: Seq[Token]) => None
+                        case _ => (a: Seq[Token]) => None)(input)
+                }
+
+                def parseColonName(input: Seq[Token]): Option[(EndNodeName,Seq[Token])] = {
+                    (takeTokenByPred((t) => t.s == ":", input))
+                    .flatMap(parseName)
+                }
+
+                Some(parseColonName(input) match
+                    case None => (None, input)
+                    case Some(name, tokens) => (Some(name), tokens))
+                .flatMap((name, tokens) =>
+                    parseArgs(tokens)
+                    .map((args, tokens) => (name, args, tokens)))
+                .map((name, args, tokens) => (NodeFunctioncall_args(name, args), tokens))
+            }
+
+            def parseTail(input: Seq[Token]): (Seq[NodeVar_index | NodeFunctioncall_args], Seq[Token]) = {
+                val tailEl = (peekNthToken(input, 1).s match
+                    case "." => parseVar_index
+                    case "(" => parseFunctioncall_args
+                    case "{" => parseFunctioncall_args
+                    case "\"" => parseFunctioncall_args
+                    case "[" => peekNthToken(input,2).s match
+                        case "=" => parseFunctioncall_args
+                        case _ => parseVar_index
+                    case _ => (a: Seq[Token]) => None)(input)
+
+                tailEl match
+                    case None => (Seq.empty[NodeVar_index | NodeFunctioncall_args], input)
+                    case Some(tailEl, tokens) => 
+                        val (tailSeq, left) = parseTail(tokens)
+                        (Seq(tailEl)++tailSeq, left)
+            }
+
+            def parseHead(input: Seq[Token]): Option[(EndNodeName | NodeExp, Seq[Token])] = {
+                val token = peekNthToken(input, 1)
+                token match
+                    case Token(_, TokenType.name) => parseName(input)
+                    case Token("(", _) =>
+                        (takeTokenByPred(_.s == "(", input))
+                        .flatMap(parseExp)
+                        .flatMap((exp, tokens) =>
+                            takeTokenByPred(_.s == ")", tokens)
+                            .map((tokens) => (exp, tokens)))
+                    case _ => None 
+            }
+
+            parseHead(input)
+            .map((head, tokens) =>
+                val (tail, left) = parseTail(tokens)
+                (head, tail, left))
+            .map((head, tail, tokens) => (NodeValue(head, tail), tokens))
+        }
+
+        def parseFuncname(input: Seq[Token]): Option[(NodeFuncname, Seq[Token])] = {
+            def parseColonName(input: Seq[Token]):  Option[(EndNodeName,Seq[Token])] = {
+                (takeTokenByPred((t) => t.s == ".", input))
+                .flatMap(parseName)
+            }
+
+            def parseDotName(input: Seq[Token]): Option[(EndNodeName,Seq[Token])] = {
+                (takeTokenByPred((t) => t.s == ".", input))
+                .flatMap(parseName)
+            }
+
+            // @tailrec
+            def parseNamelistRec(input: Seq[Token]): (Seq[EndNodeName],Seq[Token]) ={
+                (parseDotName(input)) match
+                    case Some(exp, tokens) =>
+                        val (explist, left) = parseNamelistRec(tokens)
+                        (Seq(exp)++explist, left)
+                    case None => (Seq.empty[EndNodeName], input)
+            }
+
+            (parseName(input))
+            .map((name, tokens) => 
+                val (namelist, left) = parseNamelistRec(tokens)
+                (name, namelist, left))
+            .map((name, namelist, tokens) => parseColonName(tokens) match
+                case None => (name, namelist, None, tokens)
+                case Some(self, tokens) => (name, namelist, Some(self), tokens))
+            .map((name, namelist, self, tokens) => (NodeFuncname(name, namelist, self), tokens))
+        }
+
+        def parseFuncbody(input: Seq[Token]): Option[(NodeFuncbody, Seq[Token])] = {
+            def parseParList(input: Seq[Token]): Option[(NodeParlist, Seq[Token])] = {
+                def parseCommaVararg(input: Seq[Token]): Option[(NodeVararg, Seq[Token])] = {
+                    takeTokenByPred(_.s == ",", input)
+                    .flatMap(takeTokenByPred(_.s == "...", _))
+                    .map((tokens) => (NodeVararg(), tokens))
+                }
+
+                peekNthToken(input, 1) match
+                    case Token(_, TokenType.name) =>
+                        parseNamelist(input)
+                        .map((namelist, tokens) =>
+                            parseCommaVararg(tokens) match
+                                case None => (namelist, None, tokens)
+                                case Some(vararg, tokens) => (namelist, Some(vararg), tokens))
+                        .map((namelist, vararg, tokens) => (NodeParlistNamelist(namelist, vararg), tokens))
+                    case Token("...", _) => Some(NodeVararg(), excludeEmptyTokens(input).drop(1))
+                    case _ => None
+            }
+
+            (takeTokenByPred(_.s == "(", input))
+            .map((tokens) =>
+                parseParList(tokens) match
+                    case None => (None, tokens)
+                    case Some(parlist, tokens) => (Some(parlist), tokens))
+            .flatMap((parlist, tokens) =>
+                takeTokenByPred(_.s == ")", tokens)
+                .map((tokens) => (parlist, tokens)))
+            .flatMap((parlist, tokens) =>
+                parseBlock(tokens)
+                .map((block, tokens) => (parlist, block, tokens)))
+            .flatMap((parlist, block, tokens) =>
+                takeTokenByPred(_.s == "end", tokens)
+                .map((tokens) => (parlist, block, tokens)))
+            .map((parlist, block, tokens) => (NodeFuncbody(parlist, block), tokens))
+        }
+
+        def parseAttnamelist(input: Seq[Token]): Option[(NodeAttnamelist, Seq[Token])] = {
+            def parseNameAtribute(input: Seq[Token]): Option[((EndNodeName, Option[EndNodeName]), Seq[Token])] = {
+                def parseAttribute(input: Seq[Token]): Option[(EndNodeName, Seq[Token])] = {
+                    takeTokenByPred(_.s == "<", input)
+                    .flatMap(parseName)
+                    .flatMap((name, tokens) =>
+                        takeTokenByPred(_.s == ">", input)
+                        .map((tokens) => (name, tokens)))
+                }
+
+                parseName(input)
+                .map((name, tokens) =>
+                    parseAttribute(tokens) match
+                        case None => (name, None, tokens)
+                        case Some(att, tokens) => (name, Some(att), tokens))
+                .map((name, att, tokens) => ((name, att), tokens))
+            }
+
+            def parseCommaNameAtribute(input: Seq[Token]): Option[((EndNodeName, Option[EndNodeName]), Seq[Token])] = {
+                takeTokenByPred(_.s == ",", input)
+                .flatMap(parseNameAtribute)
+            }
+
+            // @tailrec
+            def parseCommaNameAtributeList(input: Seq[Token]): (Seq[(EndNodeName, Option[EndNodeName])], Seq[Token]) = {
+                parseCommaNameAtribute(input) match
+                    case None => (Seq.empty[(EndNodeName, Option[EndNodeName])], input)
+                    case Some(nameatt, tokens) =>
+                        val (nameattList, left) = parseCommaNameAtributeList(tokens)
+                        (Seq(nameatt)++nameattList, left)
+            }
+
+            parseNameAtribute(input)
+            .map((nameatt, tokens) => 
+                val (nameattList, left) = parseCommaNameAtributeList(tokens)
+                (Seq(nameatt)++nameattList, left))
+            .map((nameattList, tokens) => (NodeAttnamelist(nameattList), tokens))
+        }
+
+        def parseTableconstructor(input: Seq[Token]): Option[(NodeTableconstructor, Seq[Token])] = {
+            def parseFieldList(input: Seq[Token]): Option[(Seq[NodeField], Seq[Token])] = {
+                def parseField(input: Seq[Token]): Option[(NodeField, Seq[Token])] = {
+                    def parseFieldExpExp(input: Seq[Token]): Option[(NodeFieldExpExp, Seq[Token])] = {
+                        takeTokenByPred(_.s == "[", input)
+                        .flatMap(parseExp)
+                        .flatMap((exp1, tokens) =>
+                            takeTokenByPred(_.s == "]", input)
+                            .map((tokens) => (exp1, tokens)))
+                        .flatMap((exp1, tokens) =>
+                            takeTokenByPred(_.s == "=", input)
+                            .map((tokens) => (exp1, tokens)))
+                        .flatMap((exp1, tokens) =>
+                            parseExp(tokens)
+                            .map((exp2, tokens) => (exp1, exp2, tokens)))
+                        .map((exp1, exp2, tokens) => (NodeFieldExpExp(exp1, exp2), tokens))
+                    }
+
+                    def parseFieldNameExp(input: Seq[Token]): Option[(NodeFieldExpExp, Seq[Token])] = {
+                        (peekNthToken(input, 1) match
+                            case Token(s, TokenType.name) => Some(s, excludeEmptyTokens(input).drop(1))
+                            case _ => None)
+                        .flatMap((name, tokens) =>
+                            takeTokenByPred(_.s == "=", tokens)
+                            .map((tokens) => (name, tokens)))
+                        .flatMap((name, tokens) =>
+                            parseExp(tokens)
+                            .map((exp, tokens) => (name, exp, tokens)))
+                        .map((name, exp, tokens) => (NodeFieldExpExp(EndNodeLiteralString(name), exp), tokens))
+                    }
+
+                    (peekNthToken(input, 1) match
+                        case Token("[", _) => parseFieldExpExp
+                        case Token(_, TokenType.name) =>
+                            peekNthToken(input, 2) match
+                                case Token("=", _) => parseFieldNameExp
+                                case _ => parseExp
+                        case _ => parseExp)(input)
+                }
+
+                def parseSeparatorField(input: Seq[Token]): Option[(NodeField, Seq[Token])] = {
+                    (peekNthToken(input, 1) match
+                        case Token(",", _) => Some(excludeEmptyTokens(input).drop(1))
+                        case Token(";", _) => Some(excludeEmptyTokens(input).drop(1))
+                        case _ => None)
+                    .flatMap(parseField)
+                }
+
+                def parseSeparatorFieldList(input: Seq[Token]): (Seq[NodeField], Seq[Token]) = {
+                    parseSeparatorField(input) match
+                        case None => (Seq.empty[NodeField], input)
+                        case Some(field, tokens) =>
+                            val (fieldList, left) = parseSeparatorFieldList(tokens)
+                            (Seq(field)++fieldList, left)
+                }
+
+                parseField(input)
+                .map((field, tokens) =>
+                    val (fieldList, left) = parseSeparatorFieldList(tokens)
+                    (Seq(field)++fieldList, left))
+                .map((fieldList, tokens) =>
+                    takeTokenByPred((t) => t.s == "," | t.s == ";", tokens) match
+                        case None => (fieldList, tokens)
+                        case Some(tokens) => (fieldList, tokens))
+            }
+
+            takeTokenByPred(_.s == "{", input)
+            .flatMap(parseFieldList)
+            .flatMap((fields, tokens) =>
+                takeTokenByPred(_.s == "}", tokens)
+                .map((tokens) => (fields, tokens)))
+            .map((fields, tokens) => (NodeTableconstructor(fields), tokens))
+        }
+
+        def parseLiteralString(input: Seq[Token]): Option[(EndNodeLiteralString, Seq[Token])] = {
+            def parseOneLineString(input: Seq[Token]): Option[(EndNodeLiteralString, Seq[Token])] = {
+                (takeTokenByPred(_.s == "\"", input))
+                .flatMap((tokens) =>
+                    if tokens.map(_.s).indexOf("\"") < tokens.map(_.s).indexOf("\n")
+                    then Some(tokens)
+                    else None)
+                .map((tokens) =>
+                    val endOfString = tokens.map(_.s).indexOf("\"")
+                    (tokens.slice(0,endOfString).map(_.s).fold("")(_ + _), tokens.slice(endOfString+1,tokens.length)))
+                .map((string, tokens) => (EndNodeLiteralString(string), tokens))
+            }
+
+            def parseMultyLineString(input: Seq[Token]): Option[(EndNodeLiteralString, Seq[Token])] = {
+                (takeTokenByPred(_.s == "[", input))
+                .flatMap((tokens) =>
+                    val (eq, rest) = tokens.span(_.s == "=")
+                    if eq.length >= 1 then Some((eq.length, tokens)) else None)
+                .flatMap((eq, tokens) => if tokens.head.s == "[" then Some(eq, tokens.drop(1)) else None)
+                .flatMap((eq, tokens) =>
+                    tokens.indexOfSlice(Seq("]")++Range(0, eq).map(_ => "=")++Seq("]")) match
+                        case -1 => None
+                        case index: Int =>
+                            val (left, right) = tokens.splitAt(index-1)
+                            Some(left.map(_.s).fold("")(_ + _), right.drop(1 + eq + 1)))
+                .map((string, tokens) => (EndNodeLiteralString(string), tokens))
+            }
+
+            (peekNthToken(input, 1).s match
+                case "\"" => parseOneLineString
+                case "[" => parseMultyLineString
+                case _ => (s: Seq[Token]) => None)(input)
+        }
+
+
+        parseChunk(input) match
+            case None => None
+            case Some((value,_)) => Option(value)
+    }*/
+
+    /*def parseBlock(input: Seq[Token]): parseRes[NodeBlock] = {
+        takeNthToken(input, 1)._1 match
+            case _ => Left("nonrealised")  
+    }
+
+    def parseName(input: Seq[Token]): parseRes[EndNodeName] = {
+        parseWord(_.t == TokenType.name, "Expected name")(input)
+        .map((name, tokens) => (EndNodeName(name.s), tokens))
+    }
+
+    def parseNamelist(input: Seq[Token]): parseRes[NodeNamelist] = {
+        for
+            name <- parseName(input)
+            namelist <- Right(combList((input) => {
+                for
+                    colon <- parseWord(_.s == ",", "")(input)
+                    name <- parseName(colon._2)
+                yield
+                    name
+            })(name._2))
+        yield
+            (NodeNamelist(Seq(name._1) ++ namelist._1), namelist._2)
+    }
+
+    def parseFuncbody(input: Seq[Token]): parseRes[NodeFuncbody] = {
+        for
+            openBracket <- parseWord(_.s == "(", "Expected (")(input)
+            parlist <- Right(combOpt(parseParList)(openBracket._2))
+            closeBracket <- parseWord(_.s == ")", "Expected )")(parlist._2)
+            block <- parseBlock(openBracket._2)
+            end <- parseWord(_.s == "end", "Expected end")(block._2)
+        yield
+            (NodeFuncbody(parlist._1, block._1), end._2)
+    }
+
+    def parseParList(input: Seq[Token]): parseRes[NodeParlist] = {
+        val (token, tokens) = takeNthToken(input, 1)
+        token match
+            case Token("...", _) => parseVararg(input)
+            case _ => {
+                for
+                    namelist <- parseNamelist(input)
+                    vararg <- Right(combOpt((input) => {
+                        for
+                            comma <- parseWord(_.s == ",", "")(input)
+                            vararg <- parseVararg(comma._2)
+                        yield
+                            vararg
+                    })(namelist._2))
+                yield
+                    (NodeParlistNamelist(namelist._1,vararg._1), vararg._2)
+            }
+    }
+
+    def parseVararg(input: Seq[Token]): parseRes[NodeVararg] = {
+        val (token, tokens) = takeNthToken(input, 1)
+        token match
+            case Token("...", _) => Right((NodeVararg(), tokens))
+            case Token(s, _) => Left(s"Expected ..., got: ${s}")
+    }*/

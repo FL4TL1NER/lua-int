@@ -1,0 +1,4 @@
+[debug] [lua-int] Classpath dependencies List()
+[debug] [lua-int] Dependencies from configurations List()
+[debug] Bloop wrote the configuration of project 'lua-int' to 'D:\code\scala\lua-int\.bloop\lua-int.json'
+[success] Generated .bloop\lua-int.json
