@@ -67,6 +67,24 @@ object Interpreter {
         })
     })
 
+    val newScope: IntState[Unit] = StateT((stack, memory) => {
+        push.runS(stack).map(stack => ((stack, memory), ()))
+    })
+
+    val delScope: IntState[Unit] = StateT((stack, memory) => {
+        pop.run(stack).flatMap((stack, deleted) => {
+            val a = deleted
+            .map(_._2).collect(
+                adr => adr match {case Some(adr) => decRefCount(adr)}
+            ).toSeq
+            if a.length > 0 then
+                val del = a.reduce((a, b) => a.flatMap((Unit) => b))
+                del.flatMap((Unit) => collectGarbage).runS(memory)
+                .map(memory => ((stack, memory), ()))
+            else
+                Right((stack, memory), ())
+        })
+    })
 }
 
 @main
@@ -74,13 +92,16 @@ def test() = {
     import Interpreter.*
     import parser.ParserExp.*
     import tokenizer.Tokenizer.*
-    //print(tokenize("21 // 10").map(t=>s""" "${t.s}" """).reduce(_ + _))
-    //print(parseBinExp9.run(tokenize("21 // 10")).toString())
-    parseExp.run(tokenize("a + 10")) match
+    parseExp.run(tokenize("a//2 == b//4")) match
         case Left(value) => print(value)
         case Right(tokens, exp) => print(
-            assignGlobal("a", Num(50L))
-            .flatMap((Unit) => executeExpr(exp))
-            .runA(emptyInt)
-            .toString()) 
+            (for
+                _ <- assignGlobal("a", Num(50L))
+                _ <- assignLocal("b", Num(100L))
+                _ <- newScope
+                _ <- assignLocal("c", Num(75L))
+                _ <- delScope
+                exp2 <- executeExpr(exp)
+            yield
+                exp2).run(emptyInt).toString())
 }
