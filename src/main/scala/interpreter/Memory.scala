@@ -49,6 +49,18 @@ object Memory {
         Right(input + (address -> v), ())
     })
 
+    def addRef(where: Address, to: Address): MemoryState[Unit] = (
+        for
+            _ <- StateT[MemoryOp, Memory, Unit](input => {
+                val entry = input(where)
+                val new_entry = Entry(entry.refCount, entry.refList:+to, entry.value)
+                Right(input + (where -> input(where)), ())
+            })
+            _ <- incRefCount(to)
+        yield
+            Unit
+    )
+
     def getEntry(address: Address): MemoryState[Entry] = StateT(input => {
         Right(input, input(address))
     })

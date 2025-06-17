@@ -123,6 +123,33 @@ object InterpreterExp {
                 case _ => executeError("WIP")).run(int)
     })
 
+    def executeTableConstructor(table: NodeTableconstructor): IntState[Value] = StateT((stack, memory) => {
+        val expList = table.fields.collect(field => field match {case a: NodeExp => executeExpr(a)})
+        .zipWithIndex
+        .map((state, n) => (
+            for
+                exp <- state
+            yield
+                (exp, Num(n.toLong))
+        ))
+        val expExpList = table.fields.collect(
+            field => field match {case NodeFieldExpExp(exp1, exp2) => (executeExpr(exp1), executeExpr(exp2))}
+        ).map((state1, state2) => (
+            for
+                exp1 <- state1
+                exp2 <- state2
+            yield
+                (exp1, exp2)
+        ))
+        val membersList = expList++expExpList
+        
+        for
+            memoryAdr <- newEntry(Entry(0, Seq.empty, Table(Map.empty))).run(memory)
+            a <- membersList.reduce().run((stack,memoryAdr._1))
+        yield
+        
+        
+    })
     //def executeBlock(block: NodeBlock): IntState[Seq[Value]] = ???
 
     def valueToDouble(v: Value): Double = {
@@ -148,4 +175,24 @@ object InterpreterExp {
             case Str(a) => a
             case Nil() => ""
     }
+}
+
+@main
+def test() = {
+    import Interpreter.*
+    import InterpreterExp.*
+    import parser.ParserExp.*
+    import tokenizer.Tokenizer.*
+    parseExp.run(tokenize("10 + c")) match
+        case Left(value) => print(value)
+        case Right(tokens, exp) => print(
+            (for
+                _ <- assignGlobal("a", Num(50L))
+                _ <- assignLocal("b", Num(100L))
+                _ <- newScope
+                _ <- assignLocal("c", Num(75L))
+                //_ <- delScope
+                exp2 <- executeExpr(exp)
+            yield
+                exp2).run(emptyInt).toString())
 }

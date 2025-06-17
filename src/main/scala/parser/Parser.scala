@@ -304,10 +304,10 @@ object Parser {
     )
 }
 
-// @main
-// def test() = {
-//     import tokenizer.Tokenizer.tokenize
-//     // print(tokenize("::ad::").map(_.s))
-//     val a = Parser.parseBlock.run(tokenize("repeat return until a<b; a = b"))
-//     print(a.toString())
-// }
+@main
+def test() = {
+    import tokenizer.Tokenizer.tokenize
+    // print(tokenize("::ad::").map(_.s))
+    val a = Parser.parseBlock.run(tokenize("repeat return until a<b; a = b"))
+    print(a.toString())
+}
