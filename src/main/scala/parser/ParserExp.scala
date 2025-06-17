@@ -175,7 +175,7 @@ object ParserExp {
                 for
                     _ <- parseWord(_.s == "(", "")
                     exp <- parseExp
-                    _ <- parseWord(_.s == "(", "")
+                    _ <- parseWord(_.s == ")", "")
                 yield
                     exp
             )
