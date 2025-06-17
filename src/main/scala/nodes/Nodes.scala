@@ -10,7 +10,7 @@ object Nodes {
 
     sealed trait NodeStat
     case class NodeStatEmpty() extends NodeStat
-    case class NodeVarlistAssignment(varlist: NodeVarlist,explist: NodeExplist) extends NodeStat
+    case class NodeVarlistAssignment(varlist: NodeVarlist, explist: NodeExplist) extends NodeStat
     case class NodeLabel(name: EndNodeName) extends NodeStat
     case class NodeBreak() extends NodeStat
     case class NodeGoto(name: EndNodeName) extends NodeStat
@@ -22,7 +22,7 @@ object Nodes {
     case class NodeForExpr(namelist: NodeNamelist, explist: NodeExplist, block: NodeBlock) extends NodeStat
     case class NodeFunction(funcname: NodeFuncname, funcbody: NodeFuncbody) extends NodeStat //with NodeSimpleexp
     case class NodeLocalFunction(name: EndNodeName, funcbody: NodeFuncbody) extends NodeStat
-    case class NodeLocalNamelist(attnamelist: NodeAttnamelist,explist: Option[NodeExplist]) extends NodeStat
+    case class NodeLocalNamelist(attnamelist: NodeAttnamelist, explist: Option[NodeExplist]) extends NodeStat
 
     case class NodeAttnamelist(namelist: Seq[(EndNodeName,Option[EndNodeName])])
     case class NodeRetstat(explist: Option[NodeExplist])
@@ -33,8 +33,8 @@ object Nodes {
     case class NodeExplist(explist: Seq[NodeExp])
 
     sealed trait NodeExp extends NodeField
-    case class NodeBinOpExp(binOp: BinOp,nodeExp: NodeExp,nodeExp2: NodeExp) extends NodeExp
-    case class NodeUnOpExp(unOp: UnOp,nodeExp: NodeExp) extends NodeExp
+    case class NodeBinOpExp(binOp: BinOp, nodeExp: NodeExp, nodeExp2: NodeExp) extends NodeExp
+    case class NodeUnOpExp(unOp: UnOp, nodeExp: NodeExp) extends NodeExp
 
     sealed trait NodeSimpleexp extends NodeExp
     case class NodeNil() extends NodeSimpleexp
@@ -48,7 +48,7 @@ object Nodes {
     case class NodeVar(value: NodeValue)
 
     case class NodeVar_index(nodeExp: NodeExp)
-    case class NodeFunctioncall_args(self: Option[EndNodeName],args: NodeArgs)
+    case class NodeFunctioncall_args(self: Option[EndNodeName], args: NodeArgs)
 
     sealed trait NodeArgs
     case class NodeArgsBracets(explist: Option[NodeExplist]) extends NodeArgs
@@ -56,10 +56,10 @@ object Nodes {
     case class NodeFuncbody(parlist: Option[NodeParlist], block: NodeBlock)
 
     sealed trait NodeParlist
-    case class NodeParlistNamelist(namelist: NodeNamelist,vararg: Option[NodeVararg]) extends NodeParlist
+    case class NodeParlistNamelist(namelist: NodeNamelist, vararg: Option[NodeVararg]) extends NodeParlist
 
     sealed trait NodeField
-    case class NodeFieldExpExp(exp1: NodeExp,exp2: NodeExp) extends NodeField
+    case class NodeFieldExpExp(exp1: NodeExp, exp2: NodeExp) extends NodeField
     
     object BinOp:
         def find(s: String) = {BinOp.values.find(_.op == s)}
