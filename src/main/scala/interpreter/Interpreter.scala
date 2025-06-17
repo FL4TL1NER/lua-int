@@ -47,7 +47,7 @@ object Interpreter {
                             addGlobal(name, Some(address)).runS(stack)
                             .map(stack => ((stack, memory),()))
                 case Some(adr) =>
-                    changeEntry(adr, Entry(1, Seq.empty, value)).runS(memory)
+                    changeEntry(adr, _ => Entry(1, Seq.empty, value)).runS(memory)
                     .map(memory => ((stack, memory),()))
         })
     })
@@ -62,9 +62,21 @@ object Interpreter {
                             addLocal(name, Some(address)).runS(stack)
                             .map(stack => ((stack, memory),()))
                 case Some(adr) =>
-                    changeEntry(adr, Entry(1, Seq.empty, value)).runS(memory)
+                    changeEntry(adr, _ => Entry(1, Seq.empty, value)).runS(memory)
                     .map(memory => ((stack, memory),()))
         })
+    })
+
+    def emptyStat[A](either: Either[String, A]): IntState[A] = StateT(input => {
+        either.map(a => (input, a))
+    })
+    
+    def memState[A](memState: MemoryState[A]): IntState[A] = StateT((stack, memory) => {
+        memState.run(memory).map((memory, a) => ((stack, memory), a))
+    })
+
+    def stackState[A](stackState: StackState[A]): IntState[A] = StateT((stack, memory) => {
+        stackState.run(stack).map((stack, a) => ((stack, memory), a))
     })
 
     val newScope: IntState[Unit] = StateT((stack, memory) => {

@@ -19,98 +19,173 @@ object InterpreterExp {
 
     def executeExpr(expr: NodeExp): IntState[Value] = StateT(input => {
         (expr match
-            case NodeBinOpExp(a, b, c) => executeBinExpr(NodeBinOpExp(a, b, c))
-            case NodeUnOpExp(a, b) => executeUnExpr(NodeUnOpExp(a, b))
-            case NodeValue(start, tail) => executeNodeValue(NodeValue(start, tail))
-            case _ => executeSimpleExpr(expr)).run(input)
+            case a: NodeBinOpExp => executeBinExpr(a)
+            case a: NodeUnOpExp => executeUnExpr(a)
+            case a: NodeSimpleexp => executeSimpleExpr(a)).run(input)
     })
 
     def executeBinExpr(expr: NodeBinOpExp): IntState[Value] = StateT(input => {
+        def binExpState(binOp: BinOp, val1: Value, val2: Value): IntState[Value] = StateT(input => {
+            val a = expr.binOp match
+                case BinOp.Exponentiation =>
+                    for
+                        a <- valueToDouble(val1)
+                        b <- valueToDouble(val2)
+                    yield
+                        Num(pow(a, b))
+                case BinOp.Addition =>
+                    for
+                        a <- valueToDouble(val1)
+                        b <- valueToDouble(val2)
+                    yield
+                        Num(a + b)
+                case BinOp.Substaction =>
+                    for
+                        a <- valueToDouble(val1)
+                        b <- valueToDouble(val2)
+                    yield
+                        Num(a - b)   
+                case BinOp.Multiplication =>
+                    for
+                        a <- valueToDouble(val1)
+                        b <- valueToDouble(val2)
+                    yield
+                        Num(a * b)
+                case BinOp.Division =>
+                    for
+                        a <- valueToDouble(val1)
+                        b <- valueToDouble(val2)
+                    yield
+                        Num(a / b)       
+                case BinOp.FloorDivision =>
+                    for
+                        a <- valueToLong(val1)
+                        b <- valueToLong(val2)
+                    yield
+                        Num(a / b)  
+                case BinOp.Modulo =>
+                    for
+                        a <- valueToLong(val1)
+                        b <- valueToLong(val2)
+                    yield
+                        Num(a % b)
+                case BinOp.BitwiseAND =>
+                    for
+                        a <- valueToLong(val1)
+                        b <- valueToLong(val2)
+                    yield
+                        Num(a & b)    
+                case BinOp.BitwiseOR =>
+                    for
+                        a <- valueToLong(val1)
+                        b <- valueToLong(val2)
+                    yield
+                        Num(a | b)      
+                case BinOp.BitwiseXOR =>
+                    for
+                        a <- valueToLong(val1)
+                        b <- valueToLong(val2)
+                    yield
+                        Num(a ^ b)    
+                case BinOp.RightShift =>
+                    for
+                        a <- valueToLong(val1)
+                        b <- valueToLong(val2)
+                    yield
+                        Num(a >> b)     
+                case BinOp.LeftShift =>
+                    for
+                        a <- valueToLong(val1)
+                        b <- valueToLong(val2)
+                    yield
+                        Num(a << b)
+                case BinOp.And =>
+                    Right(if valueToBool(val1) == false then
+                        val1
+                    else
+                        val2 )   
+                case BinOp.Or =>
+                    Right(if valueToBool(val1) != false then
+                        val1
+                    else
+                        val2)
+                case BinOp.Equality =>
+                    Right(valEquality(val1, val2))
+                case BinOp.Inequality =>
+                    Right({
+                        val a = valEquality(val1, val2)
+                        Bool(!a.a)
+                    })
+                case BinOp.LessThan =>
+                    for
+                        a <- valueToDouble(val1)
+                        b <- valueToDouble(val2)
+                    yield
+                        Bool(a < b)
+                case BinOp.GreaterThan =>
+                    for
+                        a <- valueToDouble(val1)
+                        b <- valueToDouble(val2)
+                    yield
+                        Bool(a > b)
+                case BinOp.LessOrEqual =>
+                    for
+                        a <- valueToDouble(val1)
+                        b <- valueToDouble(val2)
+                    yield
+                        Bool(a <= b)
+                case BinOp.GreaterOrEqual =>
+                    for
+                        a <- valueToDouble(val1)
+                        b <- valueToDouble(val2)
+                    yield
+                        Bool(a >= b)
+                case BinOp.Concatenation =>
+                    for
+                        a <- valueToStr(val1)
+                        b <- valueToStr(val2)
+                    yield
+                        Str(a+b)
+            a.map(a => (input, a))
+        })
         (for
             exp1 <- executeExpr(expr.nodeExp)
             exp2 <- executeExpr(expr.nodeExp2)
+            a <- binExpState(expr.binOp, exp1, exp2)
         yield
-            expr.binOp match
-                case BinOp.Exponentiation => 
-                    Num(pow(valueToDouble(exp1),valueToDouble(exp2)))
-                case BinOp.Addition =>
-                    Num(valueToDouble(exp1) + valueToDouble(exp2))
-                case BinOp.Substaction =>
-                    Num(valueToDouble(exp1) - valueToDouble(exp2))    
-                case BinOp.Multiplication =>
-                    Num(valueToDouble(exp1) * valueToDouble(exp2))
-                case BinOp.Division =>
-                    Num(valueToDouble(exp1) / valueToDouble(exp2))       
-                case BinOp.FloorDivision =>
-                    Num(valueToLong(exp1) / valueToLong(exp2))  
-
-                case BinOp.Modulo =>
-                    Num(valueToLong(exp1) % valueToLong(exp2))
-
-                case BinOp.BitwiseAND =>
-                    Num(valueToLong(exp1) & valueToLong(exp2))    
-                case BinOp.BitwiseOR =>
-                    Num(valueToLong(exp1) | valueToLong(exp2))      
-                case BinOp.BitwiseXOR =>
-                    Num(valueToLong(exp1) ^ valueToLong(exp2))     
-                case BinOp.RightShift =>
-                    Num(valueToLong(exp1) >> valueToLong(exp2))     
-                case BinOp.LeftShift =>
-                    Num(valueToLong(exp1) << valueToLong(exp2))      
-
-                case BinOp.Equality =>
-                    Bool(valueToBool(exp1) == valueToBool(exp2))        
-                case BinOp.Inequality =>
-                    Bool(valueToBool(exp1) != valueToBool(exp2))      
-                case BinOp.LessThan =>
-                    Bool(valueToBool(exp1) < valueToBool(exp2))        
-                case BinOp.GreaterThan =>
-                    Bool(valueToBool(exp1) > valueToBool(exp2))     
-                case BinOp.LessOrEqual =>
-                    Bool(valueToBool(exp1) <= valueToBool(exp2))     
-                case BinOp.GreaterOrEqual =>
-                    Bool(valueToBool(exp1) >= valueToBool(exp2))  
-
-                case BinOp.And =>
-                    if valueToBool(exp1) == false then
-                        exp1
-                    else
-                        exp2    
-                case BinOp.Or =>
-                    if valueToBool(exp1) != false then
-                        exp1
-                    else
-                        exp2             
-
-                case BinOp.Concatenation =>
-                    Str(valueToStr(exp1)+valueToStr(exp2))).run(input)
-        
-                
-
+            a).run(input)
     })
 
     def executeUnExpr(expr: NodeUnOpExp): IntState[Value] = StateT(input => {
+        def unExpState(unOp: UnOp, val_ : Value): IntState[Value] = StateT(input => {
+            val a = unOp match
+                case UnOp.Minus =>
+                    valueToDouble(val_).map(a => Num(a* (-1)))
+                case UnOp.BitwiseNOT => 
+                    valueToLong(val_).map(a => Num(~a))
+                case UnOp.Length =>
+                    valLength(val_).map(a => Num(a))
+                case UnOp.NOT => 
+                    Right(Bool(valueToBool(val_)))
+            a.map(a => (input, a))
+        })
         (for
             exp <- executeExpr(expr.nodeExp)
+            val_ <- unExpState(expr.unOp, exp)
         yield
-            expr.unOp match
-                case UnOp.Minus =>
-                    Num(valueToDouble(exp)*(-1))
-                case UnOp.BitwiseNOT =>
-                    Num(~valueToLong(exp))
-                case UnOp.Length =>
-                    Num(valueToStr(exp).length().toLong)
-                case UnOp.NOT =>
-                    Bool(!valueToBool(exp))).run(input)
+            val_).run(input)     
     })
 
-    def executeSimpleExpr(expr: NodeExp): IntState[Value] = StateT(input => {
-        val v = (expr match
-            case EndNodeLiteralString(string) => Str(string)
-            case EndNodeNumeral(a) => Num(a)
-            case NodeBoolean(value) => Bool(value)
-            case NodeNil() => Nil())
-        Right(input, v)
+    def executeSimpleExpr(expr: NodeSimpleexp): IntState[Value] = StateT(input => {
+        (expr match
+            case EndNodeLiteralString(string) => emptyStat(Right(Str(string)))
+            case EndNodeNumeral(a) => emptyStat(Right(Num(a)))
+            case NodeBoolean(value) => emptyStat(Right(Bool(value)))
+            case NodeNil() => emptyStat(Right(Nil()))
+            case a: NodeValue => executeNodeValue(a)
+            case a: NodeFunctiondef => emptyStat(Left("WIP"))
+            case a: NodeTableconstructor => executeTableConstructor(a)
+            case a: NodeVararg => emptyStat(Left("WIP"))).run(input)
     })
 
     def executeNodeValue(value: NodeValue): IntState[Value] = StateT((int) =>{
@@ -119,48 +194,89 @@ object InterpreterExp {
         else
             value.start match
                 case EndNodeName(name) => getData(name)
-                case a: NodeExp => executeExpr(a)
-                case _ => executeError("WIP")).run(int)
+                case a: NodeExp => executeExpr(a)).run(int)
     })
 
-    def executeTableConstructor(table: NodeTableconstructor): IntState[Value] = StateT((stack, memory) => {
-        val expList = table.fields.collect(field => field match {case a: NodeExp => executeExpr(a)})
+    def executeTableConstructor(table: NodeTableconstructor): IntState[Table] = StateT((stack, memory) => {
+        val expList: Seq[IntState[(Num | Str | Bool, Value)]] = table.fields.collect(field => field match {case a: NodeExp => executeExpr(a)})
         .zipWithIndex
         .map((state, n) => (
             for
                 exp <- state
             yield
-                (exp, Num(n.toLong))
+                (Num(n.toLong), exp)
         ))
-        val expExpList = table.fields.collect(
+        val expExpList: Seq[IntState[(Num | Str | Bool, Value)]] = table.fields.collect(
             field => field match {case NodeFieldExpExp(exp1, exp2) => (executeExpr(exp1), executeExpr(exp2))}
         ).map((state1, state2) => (
             for
                 exp1 <- state1
                 exp2 <- state2
+                key <- StateT((input: InterpreterState) => {valueToKey(exp1).map(exp => (input, exp))})
             yield
-                (exp1, exp2)
+                (key, exp2)
         ))
-        val membersList = expList++expExpList
+
+        val b = expList++expExpList
+
+        val stateAddress = (
+            for
+                newTable <- b.foldLeft(emptyStat(Right(Map.empty[Num | Str | Bool, Address])))((exp1, exp2) =>
+                    for
+                        ad <- exp1
+                        keyValue <- exp2
+                        valAdress <- memState(newEntry(Entry(0, Seq.empty, keyValue._2)))
+                    yield
+                        ad + (keyValue._1 -> valAdress)
+                )
+            yield
+                newTable
+        )       
         
-        for
-            memoryAdr <- newEntry(Entry(0, Seq.empty, Table(Map.empty))).run(memory)
-            a <- membersList.reduce().run((stack,memoryAdr._1))
-        yield
-        
-        
+        stateAddress.run((stack, memory)).map((state, address) => (state, Table(address)))
     })
     //def executeBlock(block: NodeBlock): IntState[Seq[Value]] = ???
 
-    def valueToDouble(v: Value): Double = {
+    def valLength(v: Value): Either[String, Long] = {
         v match
-            case Num(a) => a match {case a: Double => a; case a: Long => a.toDouble}
-            case Str(s) => s.toDouble
+            case Table(a) => Right(a.size)
+            case Str(s) => Right(s.length())
+            case a => Left(s"${a.toString()} does not have length")
     }
-    def valueToLong(v: Value): Long = {
+
+    def valEquality(v1: Value, v2: Value): Bool = {
+        (v1, v2) match
+            case (Num(a), Num(b)) => Bool(a==b)
+            case (Bool(a), Bool(b)) => Bool(a==b)
+            case (Str(a), Str(b)) => Bool(a==b)
+            case (_, _) => Bool(false)
+    }
+
+    def valueToKey(v: Value): Either[String, Num | Str | Bool] = {
         v match
-            case Num(a) => a match {case a: Double => a.toLong; case a: Long => a}
-            case Str(s) => s.toLong
+            case a: Bool => Right(a)
+            case a: Num => Right(a)
+            case s: Str => Right(s)
+            case _ => Left("not a key")
+    }
+
+    def valueToNum(v: Value): Either[String, Double | Long] = {
+        v match
+            case Num(a) => Right(a)
+            case a => Left(s"${a.toString()}")
+    }
+
+    def valueToDouble(v: Value): Either[String, Double] = {
+        v match
+            case Num(a) => Right(a match {case a: Double => a; case a: Long => a.toDouble})
+            case Str(s) => Right(s.toDouble)
+            case a => Left(s"attempt to convert ${a} to Double")
+    }
+    def valueToLong(v: Value): Either[String, Long] = {
+        v match
+            case Num(a) => Right(a match {case a: Double => a.toLong; case a: Long => a})
+            case Str(s) => Right(s.toLong)
+            case a => Left(s"attempt to convert ${a} to Long")
     }
     def valueToBool(v: Value): Boolean = {
         v match
@@ -168,12 +284,12 @@ object InterpreterExp {
             case Bool(a) => a
             case _ => true
     }
-    def valueToStr(v: Value): String = {
+    def valueToStr(v: Value): Either[String, String] = {
         v match
-            case Num(a) => a.toString()
-            case Bool(a) => a.toString()
-            case Str(a) => a
-            case Nil() => ""
+            case Num(a) => Right(a.toString())
+            case Bool(a) => Right(a.toString())
+            case Str(a) => Right(a)
+            case a => Left(s"attempt to convert ${a.toString()} to string")
     }
 }
 
@@ -183,7 +299,7 @@ def test() = {
     import InterpreterExp.*
     import parser.ParserExp.*
     import tokenizer.Tokenizer.*
-    parseExp.run(tokenize("10 + c")) match
+    parseExp.run(tokenize("{12}")) match
         case Left(value) => print(value)
         case Right(tokens, exp) => print(
             (for

@@ -20,7 +20,7 @@ object Nodes {
     case class NodeIf(exp: NodeExp, blockThen: NodeBlock, blockElse: Option[NodeBlock]) extends NodeStat
     case class NodeForInt(name: EndNodeName, exp1: NodeExp,exp2: NodeExp,exp3: NodeExp, block: NodeBlock) extends NodeStat
     case class NodeForExpr(namelist: NodeNamelist, explist: NodeExplist, block: NodeBlock) extends NodeStat
-    case class NodeFunction(funcname: NodeFuncname, funcbody: NodeFuncbody) extends NodeStat with NodeSimpleexp
+    case class NodeFunction(funcname: NodeFuncname, funcbody: NodeFuncbody) extends NodeStat //with NodeSimpleexp
     case class NodeLocalFunction(name: EndNodeName, funcbody: NodeFuncbody) extends NodeStat
     case class NodeLocalNamelist(attnamelist: NodeAttnamelist,explist: Option[NodeExplist]) extends NodeStat
 

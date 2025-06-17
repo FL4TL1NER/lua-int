@@ -45,8 +45,8 @@ object Memory {
             Right(input.removed(address), ())
     })
 
-    def changeEntry(address: Address, v: Entry): MemoryState[Unit] = StateT(input => {
-        Right(input + (address -> v), ())
+    def changeEntry(address: Address, v: Entry => Entry): MemoryState[Unit] = StateT(input => {
+        Right(input + (address -> v(input(address))), ())
     })
 
     def addRef(where: Address, to: Address): MemoryState[Unit] = (
@@ -58,7 +58,7 @@ object Memory {
             })
             _ <- incRefCount(to)
         yield
-            Unit
+            ()
     )
 
     def getEntry(address: Address): MemoryState[Entry] = StateT(input => {
