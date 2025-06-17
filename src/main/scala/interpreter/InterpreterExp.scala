@@ -13,6 +13,14 @@ import scala.math.pow
 import Interpreter.*
 
 object InterpreterExp {
+    def valueToKey(v: Value): Either[String, Num | Str | Bool] = {
+        v match
+            case a: Bool => Right(a)
+            case a: Num => Right(a)
+            case s: Str => Right(s)
+            case _ => Left("not a key")
+    }
+
     def executeError[A](error: String): IntState[A] = StateT(input => {
         Left(error)
     })
@@ -188,13 +196,38 @@ object InterpreterExp {
             case a: NodeVararg => emptyStat(Left("WIP"))).run(input)
     })
 
-    def executeNodeValue(value: NodeValue): IntState[Value] = StateT((int) =>{
-        (if value.tail.length > 0 then
-            executeError("WIP")
-        else
-            value.start match
+    def executeNodeValue(value: NodeValue): IntState[Value] = StateT((int) => {
+        def executeIndex(v: Value, index: NodeVar_index): IntState[Value] = (
+            for
+                ind <- executeExpr(index.nodeExp)
+                key <- emptyStat(valueToKey(ind))
+                tableAdr <- emptyStat(v match {
+                    case Table(a) => Right(a.get(key))
+                    case a => Left(s"${a.toString()} not indexable")})
+                ret <- tableAdr match {
+                    case None => emptyStat(Right(Nil()))
+                    case Some(value) => memState(getEntry(value)).map(entry => entry.value)}
+            yield
+                ret
+        )
+
+        def executeHead(head: EndNodeName | NodeExp): IntState[Value] = (
+            head match
                 case EndNodeName(name) => getData(name)
-                case a: NodeExp => executeExpr(a)).run(int)
+                case a: NodeExp => executeExpr(a)
+        )
+
+        (if value.tail.length > 0 then
+            value.tail.foldLeft(executeHead(value.start))((head, tail) => 
+                for
+                    v <- head
+                    res <- tail match {
+                        case a: NodeVar_index => executeIndex(v, a)
+                        case a: NodeFunctioncall_args => executeError("WIP")}
+                yield
+                    res)
+        else
+            executeHead(value.start)).run(int)
     })
 
     def executeTableConstructor(table: NodeTableconstructor): IntState[Table] = StateT((stack, memory) => {
@@ -204,7 +237,7 @@ object InterpreterExp {
             for
                 exp <- state
             yield
-                (Num(n.toLong), exp)
+                (Num(n.toLong+1), exp)
         ))
         val expExpList: Seq[IntState[(Num | Str | Bool, Value)]] = table.fields.collect(
             field => field match {case NodeFieldExpExp(exp1, exp2) => (executeExpr(exp1), executeExpr(exp2))}
@@ -252,14 +285,6 @@ object InterpreterExp {
             case (_, _) => Bool(false)
     }
 
-    def valueToKey(v: Value): Either[String, Num | Str | Bool] = {
-        v match
-            case a: Bool => Right(a)
-            case a: Num => Right(a)
-            case s: Str => Right(s)
-            case _ => Left("not a key")
-    }
-
     def valueToNum(v: Value): Either[String, Double | Long] = {
         v match
             case Num(a) => Right(a)
@@ -299,16 +324,21 @@ def test() = {
     import InterpreterExp.*
     import parser.ParserExp.*
     import tokenizer.Tokenizer.*
-    parseExp.run(tokenize("{12}")) match
+    //print(parseExp.run(tokenize("""({name = 12, "das"})[2]""")))
+    parseExp.run(tokenize("""({name = 12, "das"})[1]""")) match
         case Left(value) => print(value)
-        case Right(tokens, exp) => print(
-            (for
-                _ <- assignGlobal("a", Num(50L))
-                _ <- assignLocal("b", Num(100L))
-                _ <- newScope
-                _ <- assignLocal("c", Num(75L))
-                //_ <- delScope
-                exp2 <- executeExpr(exp)
-            yield
-                exp2).run(emptyInt).toString())
+        case Right(tokens, exp) =>
+            if tokens.isEmpty then
+                print(
+                    (for
+                        _ <- assignGlobal("a", Num(50L))
+                        _ <- assignLocal("b", Num(100L))
+                        _ <- newScope
+                        _ <- assignLocal("c", Num(75L))
+                        //_ <- delScope
+                        exp2 <- executeExpr(exp)
+                    yield
+                        exp2).run(emptyInt).toString())
+            else
+                print(tokens.map(_.s))
 }
