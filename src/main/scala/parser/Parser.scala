@@ -219,10 +219,16 @@ object Parser {
         for
             _ <- parseWord(_.s == "for", "not a for")
             name <- parseName
-            _ <- parseWord(_.s == "=", "not a =")
+            _ <- parseWord(_.s == "=", "expected =")
             exp1 <- parseExp
+            _ <- parseWord(_.s == ",", "expected ,")
             exp2 <- parseExp
-            exp3Opt <- combOpt(parseExp)
+            exp3Opt <- combOpt(
+                for
+                    _ <- parseWord(_.s == ",", "expected ,")
+                    exp <- parseExp
+                yield
+                    exp)
             exp3 = exp3Opt match {case None => EndNodeNumeral(1L); case Some(value) => value}
             _ <- parseWord(_.s == "do", "not a do")
             block <- parseBlock
