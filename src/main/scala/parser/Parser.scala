@@ -13,6 +13,15 @@ type parseRes[A] = Either[String, A]
 type ParseState[A] = StateT[parseRes, Seq[Token], A]
 
 object Parser {
+    def parse(input: Seq[Token]): Either[String, NodeChunk] = {
+        parseChunk.run(input)
+        .flatMap((tokens, chunk) =>
+            if tokens.length > 0 then
+                Left(s"unparsed tokens: ${tokens.take(5).map(_.s)}")
+            else
+                Right(chunk))
+    }
+
     val parseRetstat: StateT[parseRes, Seq[Token], NodeRetstat] = (
         for
             _ <- parseWord(_.s == "return", "no return")

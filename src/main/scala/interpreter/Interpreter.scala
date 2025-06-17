@@ -8,6 +8,7 @@ import Memory.*
 import Stack.*
 import Value.*
 import InterpreterExp.*
+import InterpreterStat.*
 
 object Interpreter {
     type InterpreterState = (Stack, Memory)
@@ -15,6 +16,10 @@ object Interpreter {
     type IntState[A] = StateT[IntOp, InterpreterState, A]
 
     val emptyInt: InterpreterState = (emptyStack, emptyMemory)
+
+    def executeChunk(chuck: NodeChunk): IntState[Option[Seq[Value]]] = (
+        executeBlock(chuck.block)
+    )
 
     def getData(name: String): IntState[Value] = StateT((stack, memory) =>{
         getAddress(name).runA(stack) match
