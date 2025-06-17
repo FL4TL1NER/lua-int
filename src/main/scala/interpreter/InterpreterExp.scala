@@ -21,10 +21,6 @@ object InterpreterExp {
             case _ => Left("not a key")
     }
 
-    def executeError[A](error: String): IntState[A] = StateT(input => {
-        Left(error)
-    })
-
     def executeExpr(expr: NodeExp): IntState[Value] = StateT(input => {
         (expr match
             case a: NodeBinOpExp => executeBinExpr(a)

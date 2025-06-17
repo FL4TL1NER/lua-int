@@ -67,6 +67,10 @@ object Interpreter {
         })
     })
 
+    def executeError[A](error: String): IntState[A] = StateT(input => {
+        Left(error)
+    })
+
     def emptyStat[A](either: Either[String, A]): IntState[A] = StateT(input => {
         either.map(a => (input, a))
     })
