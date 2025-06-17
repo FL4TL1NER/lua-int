@@ -266,6 +266,16 @@ object InterpreterExp {
     })
     //def executeBlock(block: NodeBlock): IntState[Seq[Value]] = ???
 
+    def executeExprlist(explist: NodeExplist): IntState[Seq[Value]] = {
+        explist.explist.foldLeft(emptyStat(Right(Seq.empty[Value])))((list, exp) => {
+            for
+                list_ <- list
+                res <- executeExpr(exp)
+            yield
+                (list_ :+ res)
+        })
+    }
+
     def valLength(v: Value): Either[String, Long] = {
         v match
             case Table(a) => Right(a.size)
@@ -314,27 +324,27 @@ object InterpreterExp {
     }
 }
 
-@main
-def test() = {
-    import Interpreter.*
-    import InterpreterExp.*
-    import parser.ParserExp.*
-    import tokenizer.Tokenizer.*
-    //print(parseExp.run(tokenize("""({name = 12, "das"})[2]""")))
-    parseExp.run(tokenize("""({name = 12, "das"})[1]""")) match
-        case Left(value) => print(value)
-        case Right(tokens, exp) =>
-            if tokens.isEmpty then
-                print(
-                    (for
-                        _ <- assignGlobal("a", Num(50L))
-                        _ <- assignLocal("b", Num(100L))
-                        _ <- newScope
-                        _ <- assignLocal("c", Num(75L))
-                        //_ <- delScope
-                        exp2 <- executeExpr(exp)
-                    yield
-                        exp2).run(emptyInt).toString())
-            else
-                print(tokens.map(_.s))
-}
+// @main
+// def test() = {
+//     import Interpreter.*
+//     import InterpreterExp.*
+//     import parser.ParserExp.*
+//     import tokenizer.Tokenizer.*
+//     //print(parseExp.run(tokenize("""({name = 12, "das"})[2]""")))
+//     parseExplist.run(tokenize("""1, nil""")) match
+//         case Left(value) => print(value)
+//         case Right(tokens, exp) =>
+//             if tokens.isEmpty then
+//                 print(
+//                     (for
+//                         _ <- assignGlobal("a", Num(50L))
+//                         _ <- assignLocal("b", Num(100L))
+//                         _ <- newScope
+//                         _ <- assignLocal("c", Num(75L))
+//                         //_ <- delScope
+//                         exp2 <- executeExprlist(exp)
+//                     yield
+//                         exp2).run(emptyInt).toString())
+//             else
+//                 print(tokens.map(_.s))
+// }

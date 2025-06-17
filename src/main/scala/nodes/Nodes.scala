@@ -6,7 +6,7 @@ object Nodes {
     case class EndNodeName(name: String)
 
     case class NodeChunk(block: NodeBlock)
-    case class NodeBlock(stats: Seq[NodeStat],retstat: Option[NodeRetstat])
+    case class NodeBlock(stats: Seq[NodeStat], retstat: Option[NodeRetstat])
 
     sealed trait NodeStat
     case class NodeStatEmpty() extends NodeStat
@@ -26,7 +26,7 @@ object Nodes {
 
     case class NodeAttnamelist(namelist: Seq[(EndNodeName,Option[EndNodeName])])
     case class NodeRetstat(explist: Option[NodeExplist])
-    case class NodeFuncname(name: EndNodeName,nameList: Seq[EndNodeName],self: Option[EndNodeName])
+    case class NodeFuncname(name: EndNodeName, nameList: Seq[EndNodeName], self: Option[EndNodeName])
 
     case class NodeNamelist(namelist: Seq[EndNodeName])
     case class NodeVarlist(varlist: Seq[NodeVar])
@@ -41,7 +41,7 @@ object Nodes {
     case class NodeBoolean(value: Boolean) extends NodeSimpleexp
     case class NodeVararg() extends NodeSimpleexp with NodeParlist
     case class NodeFunctiondef(funcbody: NodeFuncbody) extends NodeSimpleexp
-    case class NodeValue(start: EndNodeName | NodeExp,tail: Seq[NodeVar_index | NodeFunctioncall_args]) extends NodeSimpleexp
+    case class NodeValue(start: EndNodeName | NodeExp, tail: Seq[NodeVar_index | NodeFunctioncall_args]) extends NodeSimpleexp
     case class NodeTableconstructor(fields: Seq[NodeField]) extends NodeSimpleexp with NodeArgs
 
     case class NodeFunctioncall(value: NodeValue) extends NodeStat
