@@ -323,28 +323,3 @@ object InterpreterExp {
             case a => Left(s"attempt to convert ${a.toString()} to string")
     }
 }
-
-// @main
-// def test() = {
-//     import Interpreter.*
-//     import InterpreterExp.*
-//     import parser.ParserExp.*
-//     import tokenizer.Tokenizer.*
-//     //print(parseExp.run(tokenize("""({name = 12, "das"})[2]""")))
-//     parseExplist.run(tokenize("""1, nil""")) match
-//         case Left(value) => print(value)
-//         case Right(tokens, exp) =>
-//             if tokens.isEmpty then
-//                 print(
-//                     (for
-//                         _ <- assignGlobal("a", Num(50L))
-//                         _ <- assignLocal("b", Num(100L))
-//                         _ <- newScope
-//                         _ <- assignLocal("c", Num(75L))
-//                         //_ <- delScope
-//                         exp2 <- executeExprlist(exp)
-//                     yield
-//                         exp2).run(emptyInt).toString())
-//             else
-//                 print(tokens.map(_.s))
-// }

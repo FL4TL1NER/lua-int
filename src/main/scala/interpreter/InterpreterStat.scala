@@ -221,28 +221,3 @@ object InterpreterStat {
         rec(n, Seq.empty)
     }
 }
-
-// @main
-// def test() = {
-//     import Interpreter.*
-//     import InterpreterStat.*
-//     import parser.ParserExp.*
-//     import tokenizer.Tokenizer.*
-//     //print(parseExp.run(tokenize("""({name = 12, "das"})[2]""")))
-//     val test = "" +
-//       "a, b = 20, 45\n" +
-//       "while a ~= b do if a>b then a = a-b else b=b-a end end\n" +
-//       "return a"
-//     //print(parseWhile.run(tokenize("while a ~= b do if a>b then a = a-b else b=b-a end end")))
-//     parseBlock.run(tokenize(test)) match
-//         case Left(value) => print(value)
-//         case Right(tokens, exp) =>
-//             if tokens.isEmpty then
-//                 print(
-//                     (for
-//                         exp2 <- executeBlock(exp)
-//                     yield
-//                         exp2).runA(emptyInt).toString())
-//             else
-//                 print(tokens.map(_.s))
-// }

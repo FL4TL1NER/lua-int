@@ -73,13 +73,3 @@ object Memory {
             Right(input, ())
     })
 }
-
-// @main
-// def test() = {
-//     import Memory.*
-//     newEntry(Entry(1, Seq.empty, Num(10.4))).run(Memory.emptyMemory) match
-//         case Left(value) => print(value)
-//         case Right(state, address) =>
-//             print(state.toString())
-//             decRefCount(address).flatMap((_) => collectGarbage).run(state).foreach(a => print(a.toString()))
-// }

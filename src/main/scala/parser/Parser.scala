@@ -8,27 +8,40 @@ import tokenizer.Tokenizer.{Token, TokenType}
 import nodes.Nodes.*
 import ParserUtils.*
 import parser.ParserExp.{parseExp, parseExplist, parseFuncbody, parseVar, parseFunctioncall}
+import parser.ParserExp.{exprPred}
 
 type parseRes[A] = Either[String, A]
 type ParseState[A] = StateT[parseRes, Seq[Token], A]
 
 object Parser {
-    def parse(input: Seq[Token]): Either[String, NodeChunk] = {
-        parseChunk.run(input)
-        .flatMap((tokens, chunk) =>
-            if tokens.length > 0 then
-                Left(s"unparsed tokens: ${tokens.take(5).map(_.s)}")
-            else
-                Right(chunk))
-    }
+    val predStat: Seq[Token] => Boolean = (input => {
+        takeNthToken(input, 1).map((_, token) => {
+            token match
+                case Token(";", _) => true
+                case Token("::", _) => true
+                case Token("break", _) => true
+                case Token("goto", _) => true
+                case Token("do", _) => true
+                case Token("while", _) => true
+                case Token("repeat", _) => true
+                case Token("if", _) => true
+                case Token("for", _)=> true
+                case Token("function", _) => true
+                case Token("local", _) => true
+                case Token("(", _) | Token(_, TokenType.name) => true
+                case _ => false
+        })
+        .contains(true)
+    })
 
     val parseRetstat: StateT[parseRes, Seq[Token], NodeRetstat] = (
         for
             _ <- parseWord(_.s == "return", "no return")
-            explist <- combOpt(parseExplist)
+            explist <- combOpt(exprPred, parseExplist)
         yield
             NodeRetstat(explist)
     )
+
     val parseStat = StateT[parseRes, Seq[Token], NodeStat](input =>{
         takeNthToken(input, 1).flatMap((_, token) => {
             (token match
@@ -49,8 +62,8 @@ object Parser {
 
     val parseBlock: StateT[parseRes, Seq[Token], NodeBlock] = (
         for
-            stats <- combList(parseStat)
-            retstat <- combOpt(parseRetstat)
+            stats <- combList(predStat, parseStat)
+            retstat <- combOpt(input => parseWord(_.s == "return", "").run(input).isRight, parseRetstat)
         yield
             NodeBlock(stats, retstat)
     )
@@ -67,11 +80,12 @@ object Parser {
         for
             name <- parseName
             namelist <- combList(
-                for
+                input => parseWord(_.s == ",", "").run(input).isRight,
+                (for
                     _ <- parseWord(_.s == ",", "")
                     name <- parseName
                 yield
-                    name
+                    name)
             )
         yield
             NodeNamelist(Seq(name)++namelist)
@@ -80,11 +94,12 @@ object Parser {
         for
             var_ <- parseVar
             varlist <- combList(
-                for
+                input => parseWord(_.s == ",", "").run(input).isRight,
+                (for
                     _ <- parseWord(_.s == ",", "")
                     var_ <- parseVar
                 yield
-                    var_
+                    var_)
             )
         yield
             NodeVarlist(Seq(var_)++varlist)
@@ -141,20 +156,22 @@ object Parser {
             _ <- parseWord(_.s == "then", "not a then")
             block <- parseBlock
             elseIfList <- combList(
-                for
+                input => parseWord(_.s == "elseif", "").run(input).isRight,
+                (for
                     _ <- parseWord(_.s == "elseif", "")
                     exp <- parseExp
                     _ <- parseWord(_.s == "then", "")
                     block <- parseBlock
                 yield
-                    (exp, block)
+                    (exp, block))
             )
             else_ <- combOpt(
-                for
+                input => parseWord(_.s == "else", "").run(input).isRight,
+                (for
                     _ <- parseWord(_.s == "else", "")
                     block <- parseBlock
                 yield
-                    block
+                    block)
             )
             _ <- parseWord(_.s == "end", "not a end")
         yield
@@ -213,13 +230,20 @@ object Parser {
         for
             name <- parseName
             namelist <- combList(
-                for
+                input => parseWord(_.s == ".", "").run(input).isRight,
+                (for
                     _ <- parseWord(_.s == ".", "")
                     name <- parseName
                 yield
-                    name
+                    name)
             )
-            self <- combOpt(parseName)
+            self <- combOpt(
+                input => parseWord(_.s == ":", "").run(input).isRight,
+                (for
+                    _ <- parseWord(_.s == ":", "")
+                    name <- parseName
+                yield
+                    name))
         yield
             NodeFuncname(name, namelist, self)
     )
@@ -233,11 +257,12 @@ object Parser {
             _ <- parseWord(_.s == ",", "expected ,")
             exp2 <- parseExp
             exp3Opt <- combOpt(
-                for
+                input => parseWord(_.s == ",", "").run(input).isRight,
+                (for
                     _ <- parseWord(_.s == ",", "expected ,")
                     exp <- parseExp
                 yield
-                    exp)
+                    exp))
             exp3 = exp3Opt match {case None => EndNodeNumeral(1L); case Some(value) => value}
             _ <- parseWord(_.s == "do", "not a do")
             block <- parseBlock
@@ -272,12 +297,13 @@ object Parser {
             for
                 name <- parseName
                 att <- combOpt(
-                    for 
+                    input => parseWord(_.s == "<", "").run(input).isRight,
+                    (for 
                         _ <- parseWord(_.s == "<", "")
                         name <- parseName
-                        _ <- parseWord(_.s == ">", "")
+                        _ <- parseWord(_.s == ">", "expected >")
                     yield
-                        name
+                        name)
                 )
             yield
                 (name, att)
@@ -285,11 +311,12 @@ object Parser {
         for 
             name <- attname
             namelist <- combList(
-                for 
+                input => parseWord(_.s == ",", "").run(input).isRight,
+                (for 
                     _ <- parseWord(_.s == ",", "")
                     name <- attname
                 yield
-                    name
+                    name)
             )
         yield
             NodeAttnamelist(Seq(name)++namelist)
@@ -299,11 +326,12 @@ object Parser {
             _ <- parseWord(_.s == "local", "not a local")
             namelist <- parseAttnamelist
             explist <- combOpt(
-                for
+                input => parseWord(_.s == "=", "").run(input).isRight,
+                (for
                     _ <- parseWord(_.s == "=", "")
                     explist <- parseExplist
                 yield
-                    explist
+                    explist)
             )
         yield
             NodeLocalNamelist(namelist, explist)
@@ -317,12 +345,13 @@ object Parser {
         yield
             NodeVarlistAssignment(varlist, explist)
     )
-}
 
-@main
-def test() = {
-    import tokenizer.Tokenizer.tokenize
-    // print(tokenize("::ad::").map(_.s))
-    val a = Parser.parseBlock.run(tokenize("repeat return until a<b; a = b"))
-    print(a.toString())
+    def parse(input: Seq[Token]): Either[String, NodeChunk] = {
+        parseChunk.run(input)
+        .flatMap((tokens, chunk) =>
+            if tokens.length > 0 then
+                Left(s"unparsed tokens: ${tokens.take(5).map(_.s)}")
+            else
+                Right(chunk))
+    }
 }

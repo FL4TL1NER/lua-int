@@ -45,9 +45,3 @@ object Stack {
         Right(input, getAdrRec(input))
     })
 }
-
-// @main
-// def test() = {
-//     import Stack.*
-//     print((addGlobal("dvach", Some(148L)).run(emptyStack)).toString)
-// }

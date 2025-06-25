@@ -8,18 +8,36 @@ import tokenizer.Tokenizer.{Token, TokenType}
 import nodes.Nodes.*
 import ParserUtils.*
 import parser.Parser.{parseBlock, parseNamelist, parseName}
+import parser.Parser.parseStat
 
 object ParserExp {
+    val exprPred: Seq[Token] => Boolean = (input => {
+        takeNthToken(input, 1).map((_, token) => {
+            token match
+                case Token("nil", _) => true
+                case Token("true", _) | Token("false", _) => true
+                case Token(_, TokenType.number) => true
+                case Token("\"", _) | Token("[", _) => true
+                case Token("...", _) => true
+                case Token("function", _) => true
+                case Token(_, TokenType.name) | Token("(", _) => true
+                case Token("{", _) => true
+                case _ => false
+        })
+        .contains(true)
+    })
+
     val parseNumber: StateT[parseRes, Seq[Token], EndNodeNumeral] = StateT(input => {
         val parseString: ParseState[String] = (
             for
                 n1 <- parseWord(_.t == TokenType.number,"not a number")
                 dotn2 <- combOpt(
-                    for
+                    input => parseNextToken(_.s == ".", "").run(input).isRight,
+                    (for
                         dot <- parseNextToken(_.s == ".", "not a dot")
                         n2 <- parseNextToken(_.t == TokenType.number,"not a number")
                     yield
-                        Seq(dot, n2)
+                        Seq(dot, n2))
                 )
             yield
                 dotn2 match
@@ -74,14 +92,15 @@ object ParserExp {
         for
             exp1 <- nextParse
             expList <- combList[(BinOp, NodeExp)](
-                for
+                input => parseWord(t => binOpSet.contains(t.s), "").run(input).isRight,
+                (for
                     binop <- (
                         parseWord(t => binOpSet.contains(t.s), "not in binOpSet")
                         .map(t => BinOp.find(t.s) match {case Some(value) => value})
                     )
                     exp2 <- nextParse
                 yield
-                    (binop, exp2)
+                    (binop, exp2))
             )
         yield
             expList.foldLeft(exp1)((exp1, binopexp2) => NodeBinOpExp(binopexp2._1,exp1,binopexp2._2))
@@ -105,8 +124,9 @@ object ParserExp {
     val parseUnExp: StateT[parseRes, Seq[Token], NodeExp] = (
         for 
             unOp <- combOpt(
-                parseWord(t => Set("-", "not", "#", "~").contains(t.s), "")
-                .map(t => UnOp.find(t.s) match {case Some(value) => value}))
+                input => parseWord(t => Set("-", "not", "#", "~").contains(t.s), "").run(input).isRight,
+                (parseWord(t => Set("-", "not", "#", "~").contains(t.s), "")
+                .map(t => UnOp.find(t.s) match {case Some(value) => value})))
             exp <- parseBinExp10
         yield
             unOp match
@@ -140,7 +160,10 @@ object ParserExp {
     val parseFuncbody = (
         for
             _ <- parseWord(_.s == "(", "no (")
-            parlist <- combOpt(parseParList)
+            parlist <- combOpt(
+                input => parseWord(_.t == TokenType.name, "").run(input).isRight,
+                parseParList
+            )
             _ <- parseWord(_.s == ")", "no )")
             block <- parseBlock
             _ <- parseWord(_.s == "end", "no end")
@@ -152,11 +175,12 @@ object ParserExp {
             for
                 namelist <- parseNamelist
                 varargOpt <- combOpt(
-                    for
+                    input => parseWord(_.s == ",", "").run(input).isRight,
+                    (for
                         _ <- parseWord(_.s == ",", "")
                         vararg <- parseVararg
                     yield
-                        vararg
+                        vararg)
                 )
             yield
                 NodeParlistNamelist(namelist, varargOpt))
@@ -206,7 +230,10 @@ object ParserExp {
         
         for
             head <- parseValueHead
-            tail <- combList(parseValueTail)
+            tail <- combList(
+                input => parseWord(t => Set(".", "[", ":", "(", "{", "\"").contains(t.s), "").run(input).isRight,
+                parseValueTail
+            )
         yield
             NodeValue(head, tail)
     }
@@ -236,11 +263,12 @@ object ParserExp {
     val parseFunctioncall_args = (
         for
             name <- combOpt(
-                for
+                input => parseWord(_.s == ":", "").run(input).isRight,
+                (for
                     _ <- parseWord(_.s == ":", "")
                     name <- parseName
                 yield
-                    name
+                    name)
             )
             args <- parseArgs
         yield
@@ -250,7 +278,10 @@ object ParserExp {
         val parseArgs1 = (
             for
                 _ <- parseWord(_.s == "(", "")
-                explist <- combOpt(parseExplist)
+                explist <- combOpt(
+                    exprPred,
+                    parseExplist
+                )
                 _ <- parseWord(_.s == ")", "")
             yield
                 NodeArgsBracets(explist)
@@ -276,7 +307,9 @@ object ParserExp {
     val parseTableconstructor = (
         for
             _ <- parseWord(_.s == "{", "not a tableconstructor")
-            fields <- combOpt(fieldList)
+            fields <- combOpt(
+                input => exprPred(input) || wordPred(t => t.s == "[")(input) || wordPred(t => t.t == TokenType.name)(input),
+                fieldList)
             _ <- parseWord(_.s == "}", "unclosed }")
             fieldlist = fields match {case None => Seq.empty[NodeField]; case Some(value) => value}
         yield
@@ -314,27 +347,22 @@ object ParserExp {
                             case Left(value) => parseFail(value)
                             case Right(value) => value 
                 case _ => parseExp).run(input))
-        // takeNthToken(input, 1).flatMap((_, token) =>
-        // token match
-        //     case Token("[", _) => parseFieldExpExp.run(input)
-        //     case Token(_, TokenType.name) =>
-        //         takeNthToken(input, 2).flatMap((_, token2) =>
-        //             token2 match
-        //                 case Token("=", _) => parseFieldNameExp.run(input)
-        //                 case _ => parseExp.map(exp => NodeFieldExp(exp)).run(input))
-        //     case _ => parseExp.map(exp => NodeFieldExp(exp)).run(input))
     })
     val fieldList: StateT[parseRes, Seq[Token], Seq[NodeField]] = (
         for
             field <- parseField
             fieldList <- combList(
-                for
+                wordPred(t => Set(",", ";").contains(t.s)),
+                (for
                     _ <- parseWord(t => Set(",", ";").contains(t.s), "")
                     field <- parseField
                 yield
-                    field
+                    field)
             )
-            _ <- combOpt(parseWord(t => Set(",", ";").contains(t.s), ""))
+            _ <- combOpt(
+                wordPred(t => Set(",", ";").contains(t.s)),
+                parseWord(t => Set(",", ";").contains(t.s), "")
+            )
         yield
             Seq(field)++fieldList
     )
@@ -343,11 +371,12 @@ object ParserExp {
         for
             exp <- parseExp
             explist <- combList(
-                for
+                wordPred(_.s == ","),
+                (for
                     _ <- parseWord(_.s == ",", "")
                     exp <- parseExp
                 yield
-                    exp
+                    exp)
             )
         yield
             NodeExplist(Seq(exp)++explist)
@@ -379,10 +408,21 @@ object ParserExp {
     })
 }
 
-// @main
-// def test() = {
-//     import tokenizer.Tokenizer.tokenize
-//     // print(tokenize(""" " 21313 34 1488 dasda" """).map(_.s))
-//     val a = ParserExp.parseValue.run(tokenize("name\"148\""))
-//     print(a.toString())
-// }
+@main
+def test() = {
+    import tokenizer.Tokenizer.*
+    import ParserExp.*
+    import Parser.*
+
+    val test = "" +
+        "b, a = a, b, c" +
+        "return x"
+
+    println()
+    val tokens = tokenize(test)
+    parseBlock.run(tokens) match
+        case Left(value) => print("Error: " + value)
+        case Right(a) => 
+            print(a)
+    println()
+}
